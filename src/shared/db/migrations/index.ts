@@ -1,0 +1,30 @@
+import { nowIso } from '../../lib/date';
+import type { Database } from '../types';
+import { initialSchemaMigration } from './001_initial_schema';
+import { settingsPreferencesMigration } from './002_settings_preferences';
+
+const migrations = [initialSchemaMigration, settingsPreferencesMigration] as const;
+
+type MigrationRow = { id: number };
+
+export const runMigrations = async (db: Database): Promise<void> => {
+  await db.execute(
+    'CREATE TABLE IF NOT EXISTS migrations (id INTEGER PRIMARY KEY NOT NULL, applied_at TEXT NOT NULL);',
+  );
+
+  for (const migration of migrations) {
+    const applied = await db.getFirst<MigrationRow>('SELECT id FROM migrations WHERE id = ?', [
+      migration.id,
+    ]);
+    if (applied) {
+      continue;
+    }
+    await db.transaction(async () => {
+      await migration.up(db);
+      await db.execute('INSERT INTO migrations (id, applied_at) VALUES (?, ?)', [
+        migration.id,
+        nowIso(),
+      ]);
+    });
+  }
+};
