@@ -24,6 +24,16 @@ export class MemoryDatabase implements Database {
             table,
             (this.tables.get(table) ?? []).filter(row => row.id !== params[0]),
           );
+        } else if (query.includes('where source_plan_id = ?')) {
+          this.tables.set(
+            table,
+            (this.tables.get(table) ?? []).filter(row => row.source_plan_id !== params[0]),
+          );
+        } else if (query.includes('where source_planned_exercise_id = ?')) {
+          this.tables.set(
+            table,
+            (this.tables.get(table) ?? []).filter(row => row.source_planned_exercise_id !== params[0]),
+          );
         } else {
           this.tables.set(table, []);
         }
@@ -110,6 +120,9 @@ export class MemoryDatabase implements Database {
     }
     if (query.includes('where workout_exercise_id = ?')) {
       rows = rows.filter(row => row.workout_exercise_id === params[0]);
+    }
+    if (query.includes('where source_plan_id = ?')) {
+      rows = rows.filter(row => row.source_plan_id === params[0]);
     }
     if (query.includes('order by sort_order')) {
       rows.sort((a, b) => Number(a.sort_order) - Number(b.sort_order));

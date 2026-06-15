@@ -26,7 +26,7 @@ export const HomePage = () => {
 
   const load = useCallback(async () => {
     setActivePlan(await new PlanRepository(db).getActive());
-    setLastWorkout((await new WorkoutRepository(db).listSessions(1))[0] ?? null);
+    setLastWorkout((await new WorkoutRepository(db).listSessionsForActivePlan(1))[0] ?? null);
   }, [db]);
 
   useFocusEffect(

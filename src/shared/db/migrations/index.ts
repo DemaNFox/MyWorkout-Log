@@ -2,8 +2,9 @@ import { nowIso } from '../../lib/date';
 import type { Database } from '../types';
 import { initialSchemaMigration } from './001_initial_schema';
 import { settingsPreferencesMigration } from './002_settings_preferences';
+import { pruneOrphanWorkoutHistoryMigration } from './003_prune_orphan_workout_history';
 
-const migrations = [initialSchemaMigration, settingsPreferencesMigration] as const;
+const migrations = [initialSchemaMigration, settingsPreferencesMigration, pruneOrphanWorkoutHistoryMigration] as const;
 
 type MigrationRow = { id: number };
 

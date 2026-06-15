@@ -104,6 +104,9 @@ export class PlanRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.db.execute('DELETE FROM plans WHERE id = ?', [id]);
+    await this.db.transaction(async () => {
+      await this.db.execute('DELETE FROM workout_sessions WHERE source_plan_id = ?', [id]);
+      await this.db.execute('DELETE FROM plans WHERE id = ?', [id]);
+    });
   }
 }

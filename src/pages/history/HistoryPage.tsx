@@ -22,13 +22,13 @@ export const HistoryPage = () => {
 
   useFocusEffect(
     useCallback(() => {
-      void new WorkoutRepository(db).listSessions().then(setSessions);
+      void new WorkoutRepository(db).listSessionsForActivePlan().then(setSessions);
     }, [db]),
   );
 
   return (
     <Screen title="History">
-      {sessions.length === 0 ? <EmptyState text="Completed workouts will appear here." /> : null}
+      {sessions.length === 0 ? <EmptyState text="Completed workouts for the active plan will appear here." /> : null}
       {sessions.map(session => (
         <Pressable key={session.id} onPress={() => navigation.navigate('WorkoutDetails', { workoutId: session.id })}>
           <Card>

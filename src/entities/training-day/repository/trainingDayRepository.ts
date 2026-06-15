@@ -135,6 +135,9 @@ export class TrainingDayRepository {
   }
 
   async deleteExercise(id: string): Promise<void> {
-    await this.db.execute('DELETE FROM planned_exercises WHERE id = ?', [id]);
+    await this.db.transaction(async () => {
+      await this.db.execute('DELETE FROM workout_exercises WHERE source_planned_exercise_id = ?', [id]);
+      await this.db.execute('DELETE FROM planned_exercises WHERE id = ?', [id]);
+    });
   }
 }

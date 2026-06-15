@@ -44,6 +44,10 @@ type SetRow = {
   updated_at: string;
 };
 
+type ActivePlanRow = {
+  id: string;
+};
+
 const toSession = (row: SessionRow): WorkoutSession => ({
   id: row.id,
   sourcePlanId: row.source_plan_id,
@@ -232,8 +236,30 @@ export class WorkoutRepository {
 
   async listSessions(limit = 50): Promise<WorkoutSession[]> {
     const rows = await this.db.getAll<SessionRow>(
-      'SELECT * FROM workout_sessions ORDER BY started_at DESC LIMIT ?',
+      `SELECT *
+       FROM workout_sessions ws
+       WHERE ws.source_plan_id IS NULL
+          OR EXISTS (SELECT 1 FROM plans p WHERE p.id = ws.source_plan_id)
+       ORDER BY started_at DESC
+       LIMIT ?`,
       [limit],
+    );
+    return rows.map(toSession);
+  }
+
+  async listSessionsForActivePlan(limit = 50): Promise<WorkoutSession[]> {
+    const activePlanId = await this.getActivePlanId();
+    if (!activePlanId) {
+      return [];
+    }
+
+    const rows = await this.db.getAll<SessionRow>(
+      `SELECT *
+       FROM workout_sessions
+       WHERE source_plan_id = ?
+       ORDER BY started_at DESC
+       LIMIT ?`,
+      [activePlanId, limit],
     );
     return rows.map(toSession);
   }
@@ -272,5 +298,12 @@ export class WorkoutRepository {
       [workoutExerciseId],
     );
     return rows.map(toSet);
+  }
+
+  private async getActivePlanId(): Promise<string | null> {
+    const row = await this.db.getFirst<ActivePlanRow>('SELECT id FROM plans WHERE status = ? LIMIT 1', [
+      'active',
+    ]);
+    return row?.id ?? null;
   }
 }

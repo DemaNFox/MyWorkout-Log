@@ -11,21 +11,42 @@ type HistorySqlRow = {
   actualReps: number;
 };
 
+type ActivePlanRow = {
+  id: string;
+};
+
 export class AnalyticsRepository {
   constructor(private readonly db: Database) {}
 
   async listExerciseNames(): Promise<string[]> {
+    const activePlanId = await this.getActivePlanId();
+    if (!activePlanId) {
+      return [];
+    }
+
     const rows = await this.db.getAll<{ name_snapshot: string }>(
       `SELECT DISTINCT we.name_snapshot
        FROM workout_exercises we
+       JOIN workout_sessions ws ON ws.id = we.workout_session_id
        JOIN workout_sets wset ON wset.workout_exercise_id = we.id
        WHERE wset.completed = 1
+         AND ws.source_plan_id = ?
+         AND (
+           we.source_planned_exercise_id IS NULL
+           OR EXISTS (SELECT 1 FROM planned_exercises pe WHERE pe.id = we.source_planned_exercise_id)
+         )
        ORDER BY we.name_snapshot ASC`,
+      [activePlanId],
     );
     return rows.map(row => row.name_snapshot);
   }
 
   async getExerciseHistory(exerciseName: string): Promise<ExerciseHistoryRow[]> {
+    const activePlanId = await this.getActivePlanId();
+    if (!activePlanId) {
+      return [];
+    }
+
     const rows = await this.db.getAll<HistorySqlRow>(
       `SELECT
          ws.id as workoutSessionId,
@@ -36,9 +57,15 @@ export class AnalyticsRepository {
        FROM workout_sessions ws
        JOIN workout_exercises we ON we.workout_session_id = ws.id
        JOIN workout_sets wset ON wset.workout_exercise_id = we.id
-       WHERE we.name_snapshot = ? AND wset.completed = 1
+       WHERE we.name_snapshot = ?
+         AND wset.completed = 1
+         AND ws.source_plan_id = ?
+         AND (
+           we.source_planned_exercise_id IS NULL
+           OR EXISTS (SELECT 1 FROM planned_exercises pe WHERE pe.id = we.source_planned_exercise_id)
+         )
        ORDER BY ws.started_at ASC, wset.set_index ASC`,
-      [exerciseName],
+      [exerciseName, activePlanId],
     );
     const grouped = new Map<string, Omit<ExerciseHistoryRow, 'trend'>>();
     rows.forEach(row => {
@@ -70,5 +97,12 @@ export class AnalyticsRepository {
       reps: row.repsAtBestWeight,
       trend: row.trend,
     }));
+  }
+
+  private async getActivePlanId(): Promise<string | null> {
+    const row = await this.db.getFirst<ActivePlanRow>('SELECT id FROM plans WHERE status = ? LIMIT 1', [
+      'active',
+    ]);
+    return row?.id ?? null;
   }
 }
