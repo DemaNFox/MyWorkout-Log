@@ -1,6 +1,6 @@
 import type { Database } from '@shared/db/types';
 import { nowIso } from '@shared/lib/date';
-import { assertNonNegative } from '@shared/lib/errors';
+import { AppError, assertNonNegative } from '@shared/lib/errors';
 import { createId } from '@shared/lib/id';
 
 import type { WorkoutDetails, WorkoutExercise, WorkoutSession, WorkoutSet } from '../model/types';
@@ -40,6 +40,10 @@ type SetRow = {
   actual_reps: number;
   completed: number;
   completed_at: string | null;
+  rest_started_at: string | null;
+  rest_finished_at: string | null;
+  rest_duration_sec: number | null;
+  rest_target_sec: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -83,6 +87,10 @@ const toSet = (row: SetRow): WorkoutSet => ({
   actualReps: row.actual_reps,
   completed: row.completed === 1,
   completedAt: row.completed_at,
+  restStartedAt: row.rest_started_at ?? null,
+  restFinishedAt: row.rest_finished_at ?? null,
+  restDurationSec: row.rest_duration_sec ?? null,
+  restTargetSec: row.rest_target_sec ?? null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -188,6 +196,10 @@ export class WorkoutRepository {
       actualReps: input.actualReps,
       completed: false,
       completedAt: null,
+      restStartedAt: null,
+      restFinishedAt: null,
+      restDurationSec: null,
+      restTargetSec: null,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -222,16 +234,67 @@ export class WorkoutRepository {
     );
   }
 
+  async startRest(setId: string, targetSec: number): Promise<void> {
+    assertNonNegative(targetSec, 'Rest target cannot be negative');
+    const timestamp = nowIso();
+    await this.db.execute(
+      'UPDATE workout_sets SET rest_started_at = ?, rest_finished_at = ?, rest_duration_sec = ?, rest_target_sec = ?, updated_at = ? WHERE id = ?',
+      [timestamp, null, null, targetSec, timestamp, setId],
+    );
+  }
+
+  async finishRest(setId: string, durationSec?: number): Promise<void> {
+    const set = await this.getSet(setId);
+    if (!set?.restStartedAt) {
+      return;
+    }
+    const finishedAt = nowIso();
+    const actualDurationSec = durationSec ?? Math.max(
+      0,
+      Math.floor((new Date(finishedAt).getTime() - new Date(set.restStartedAt).getTime()) / 1000),
+    );
+    await this.db.execute(
+      'UPDATE workout_sets SET rest_finished_at = ?, rest_duration_sec = ?, updated_at = ? WHERE id = ?',
+      [finishedAt, actualDurationSec, finishedAt, setId],
+    );
+  }
+
+  async updateRestDuration(setId: string, durationSec: number): Promise<void> {
+    assertNonNegative(durationSec, 'Rest duration cannot be negative');
+    const timestamp = nowIso();
+    await this.db.execute(
+      'UPDATE workout_sets SET rest_duration_sec = ?, rest_finished_at = ?, updated_at = ? WHERE id = ?',
+      [durationSec, timestamp, timestamp, setId],
+    );
+  }
+
+  async resetRest(setId: string): Promise<void> {
+    const timestamp = nowIso();
+    await this.db.execute(
+      'UPDATE workout_sets SET rest_started_at = ?, rest_finished_at = ?, rest_duration_sec = ?, rest_target_sec = ?, updated_at = ? WHERE id = ?',
+      [null, null, null, null, timestamp, setId],
+    );
+  }
+
   async finishSession(id: string, status: WorkoutSession['status']): Promise<void> {
     const session = await this.getSession(id);
+    if (!session) {
+      throw new AppError('Workout session was not found', 'workout.sessionNotFound');
+    }
     const finishedAt = nowIso();
-    const durationSec = session?.startedAt
+    const durationSec = session.startedAt
       ? Math.max(0, Math.floor((new Date(finishedAt).getTime() - new Date(session.startedAt).getTime()) / 1000))
       : 0;
-    await this.db.execute(
+    const result = await this.db.execute(
       'UPDATE workout_sessions SET status = ?, finished_at = ?, duration_sec = ?, updated_at = ? WHERE id = ?',
       [status, finishedAt, durationSec, finishedAt, id],
     );
+    if (result.changes === 0) {
+      throw new AppError('Workout session was not updated', 'workout.sessionNotUpdated');
+    }
+    if (status === 'completed' && session.sourcePlanId) {
+      await this.closeOtherOpenSessionsForPlan(session.sourcePlanId, session.id, finishedAt);
+    }
   }
 
   async listSessions(limit = 50): Promise<WorkoutSession[]> {
@@ -253,13 +316,53 @@ export class WorkoutRepository {
       return [];
     }
 
+    return this.listSessionsForPlan(activePlanId, limit);
+  }
+
+  async listFinishedSessionsForActivePlan(limit = 50): Promise<WorkoutSession[]> {
+    const sessions = await this.listSessionsForActivePlan(limit);
+    return sessions.filter(session => session.finishedAt);
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    await this.db.transaction(async () => {
+      await this.deleteSessionRows(id);
+    });
+    await this.assertSessionDeleted(id);
+  }
+
+  async clearFinishedSessionsForActivePlan(): Promise<number> {
+    const sessions = await this.listFinishedSessionsForActivePlan(500);
+    await this.db.transaction(async () => {
+      for (const session of sessions) {
+        await this.deleteSessionRows(session.id);
+      }
+    });
+    const remaining = await this.listFinishedSessionsForActivePlan(500);
+    if (remaining.some(session => sessions.some(deleted => deleted.id === session.id))) {
+      throw new AppError('Workout history was not fully cleared', 'workout.historyNotCleared');
+    }
+    return sessions.length;
+  }
+
+  async getOpenSessionForActivePlan(): Promise<WorkoutSession | null> {
+    const activePlanId = await this.getActivePlanId();
+    if (!activePlanId) {
+      return null;
+    }
+
+    const sessions = await this.listSessionsForPlan(activePlanId, 20);
+    return sessions.find(session => session.status === 'planned' && !session.finishedAt) ?? null;
+  }
+
+  async listSessionsForPlan(planId: string, limit = 50): Promise<WorkoutSession[]> {
     const rows = await this.db.getAll<SessionRow>(
       `SELECT *
        FROM workout_sessions
        WHERE source_plan_id = ?
        ORDER BY started_at DESC
        LIMIT ?`,
-      [activePlanId, limit],
+      [planId, limit],
     );
     return rows.map(toSession);
   }
@@ -298,6 +401,44 @@ export class WorkoutRepository {
       [workoutExerciseId],
     );
     return rows.map(toSet);
+  }
+
+  async getSet(id: string): Promise<WorkoutSet | null> {
+    const row = await this.db.getFirst<SetRow>('SELECT * FROM workout_sets WHERE id = ?', [id]);
+    return row ? toSet(row) : null;
+  }
+
+  private async deleteSessionRows(id: string): Promise<void> {
+    const exercises = await this.listExercises(id);
+    for (const exercise of exercises) {
+      await this.db.execute('DELETE FROM workout_sets WHERE workout_exercise_id = ?', [exercise.id]);
+    }
+    await this.db.execute('DELETE FROM workout_exercises WHERE workout_session_id = ?', [id]);
+    await this.db.execute('DELETE FROM workout_sessions WHERE id = ?', [id]);
+  }
+
+  private async assertSessionDeleted(id: string): Promise<void> {
+    const session = await this.getSession(id);
+    if (session) {
+      throw new AppError('Workout session was not deleted', 'workout.sessionNotDeleted');
+    }
+  }
+
+  private async closeOtherOpenSessionsForPlan(planId: string, exceptSessionId: string, finishedAt: string): Promise<void> {
+    const openSessions = (await this.listSessionsForPlan(planId, 100)).filter(
+      session => session.id !== exceptSessionId && session.status === 'planned' && !session.finishedAt,
+    );
+    await Promise.all(
+      openSessions.map(session => {
+        const durationSec = session.startedAt
+          ? Math.max(0, Math.floor((new Date(finishedAt).getTime() - new Date(session.startedAt).getTime()) / 1000))
+          : 0;
+        return this.db.execute(
+          'UPDATE workout_sessions SET status = ?, finished_at = ?, duration_sec = ?, updated_at = ? WHERE id = ?',
+          ['interrupted', finishedAt, durationSec, finishedAt, session.id],
+        );
+      }),
+    );
   }
 
   private async getActivePlanId(): Promise<string | null> {

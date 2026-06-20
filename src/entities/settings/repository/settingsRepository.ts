@@ -10,6 +10,9 @@ type SettingsRow = {
   date_format: string | null;
   theme_mode?: UserSettings['themeMode'];
   timer_alert?: UserSettings['timerAlert'];
+  timer_sound_uri?: string | null;
+  timer_sound_title?: string | null;
+  timer_sound_volume?: number;
   created_at: string;
   updated_at: string;
 };
@@ -21,6 +24,9 @@ const toSettings = (row: SettingsRow): UserSettings => ({
   dateFormat: row.date_format,
   themeMode: row.theme_mode ?? 'light',
   timerAlert: row.timer_alert ?? 'vibrate',
+  timerSoundUri: row.timer_sound_uri ?? null,
+  timerSoundTitle: row.timer_sound_title ?? null,
+  timerSoundVolume: row.timer_sound_volume ?? 1,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -41,13 +47,16 @@ export class SettingsRepository {
       dateFormat: 'dd.MM.yyyy',
       themeMode: 'light',
       timerAlert: 'vibrate',
+      timerSoundUri: null,
+      timerSoundTitle: null,
+      timerSoundVolume: 1,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
     await this.db.execute(
       `INSERT INTO settings
-       (id, weight_unit, default_rest_sec, date_format, theme_mode, timer_alert, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, weight_unit, default_rest_sec, date_format, theme_mode, timer_alert, timer_sound_uri, timer_sound_title, timer_sound_volume, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         settings.id,
         settings.weightUnit,
@@ -55,6 +64,9 @@ export class SettingsRepository {
         settings.dateFormat,
         settings.themeMode,
         settings.timerAlert,
+        settings.timerSoundUri,
+        settings.timerSoundTitle,
+        settings.timerSoundVolume,
         settings.createdAt,
         settings.updatedAt,
       ],
@@ -63,12 +75,22 @@ export class SettingsRepository {
   }
 
   async update(
-    input: Pick<UserSettings, 'weightUnit' | 'defaultRestSec' | 'dateFormat' | 'themeMode' | 'timerAlert'>,
+    input: Pick<
+      UserSettings,
+      | 'weightUnit'
+      | 'defaultRestSec'
+      | 'dateFormat'
+      | 'themeMode'
+      | 'timerAlert'
+      | 'timerSoundUri'
+      | 'timerSoundTitle'
+      | 'timerSoundVolume'
+    >,
   ): Promise<void> {
     await this.get();
     await this.db.execute(
       `UPDATE settings
-       SET weight_unit = ?, default_rest_sec = ?, date_format = ?, theme_mode = ?, timer_alert = ?, updated_at = ?
+       SET weight_unit = ?, default_rest_sec = ?, date_format = ?, theme_mode = ?, timer_alert = ?, timer_sound_uri = ?, timer_sound_title = ?, timer_sound_volume = ?, updated_at = ?
        WHERE id = ?`,
       [
         input.weightUnit,
@@ -76,6 +98,9 @@ export class SettingsRepository {
         input.dateFormat,
         input.themeMode,
         input.timerAlert,
+        input.timerSoundUri,
+        input.timerSoundTitle,
+        input.timerSoundVolume,
         nowIso(),
         'default',
       ],

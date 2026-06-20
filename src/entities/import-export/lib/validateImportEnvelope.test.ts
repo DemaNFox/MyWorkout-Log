@@ -34,6 +34,45 @@ describe('parseImportEnvelope', () => {
     expect(envelope.type).toBe('workout-plan');
   });
 
+  it('accepts a valid workout programs export', () => {
+    const envelope = parseImportEnvelope(
+      JSON.stringify({
+        schemaVersion: 1,
+        type: 'workout-programs',
+        exportedAt: '2026-06-15T12:00:00.000Z',
+        payload: {
+          programs: [
+            {
+              name: 'Strength',
+              days: [
+                {
+                  name: 'Day 1',
+                  order: 1,
+                  exercises: [
+                    {
+                      name: 'Squat',
+                      targetSets: 3,
+                      targetReps: 5,
+                      targetWeight: 100,
+                      note: 'Controlled reps',
+                      order: 1,
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              name: 'Hypertrophy',
+              days: [],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(envelope.type).toBe('workout-programs');
+  });
+
   it('rejects invalid json', () => {
     expect(() => parseImportEnvelope('{')).toThrow(AppError);
   });

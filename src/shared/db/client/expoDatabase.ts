@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 
-import type { Database, SqlValue } from '../types';
+import type { Database, ExecuteResult, SqlValue } from '../types';
 
 type ExpoDb = Awaited<ReturnType<typeof SQLite.openDatabaseAsync>>;
 
@@ -13,8 +13,9 @@ export class ExpoDatabase implements Database {
     return new ExpoDatabase(db);
   }
 
-  async execute(sql: string, params: readonly SqlValue[] = []): Promise<void> {
-    await this.db.runAsync(sql, [...params]);
+  async execute(sql: string, params: readonly SqlValue[] = []): Promise<ExecuteResult> {
+    const result = await this.db.runAsync(sql, [...params]);
+    return { changes: result.changes };
   }
 
   async getAll<T>(sql: string, params: readonly SqlValue[] = []): Promise<T[]> {

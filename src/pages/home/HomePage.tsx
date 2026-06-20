@@ -22,11 +22,14 @@ export const HomePage = () => {
   const colors = useThemeColors();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
+  const [activeWorkout, setActiveWorkout] = useState<WorkoutSession | null>(null);
   const [lastWorkout, setLastWorkout] = useState<WorkoutSession | null>(null);
 
   const load = useCallback(async () => {
+    const workoutRepository = new WorkoutRepository(db);
     setActivePlan(await new PlanRepository(db).getActive());
-    setLastWorkout((await new WorkoutRepository(db).listSessionsForActivePlan(1))[0] ?? null);
+    setActiveWorkout(await workoutRepository.getOpenSessionForActivePlan());
+    setLastWorkout((await workoutRepository.listSessionsForActivePlan(10)).find(session => session.finishedAt) ?? null);
   }, [db]);
 
   useFocusEffect(
@@ -37,6 +40,11 @@ export const HomePage = () => {
 
   const startWorkout = async () => {
     try {
+      const openSession = await new WorkoutRepository(db).getOpenSessionForActivePlan();
+      if (openSession) {
+        navigation.navigate('WorkoutSession', { workoutId: openSession.id });
+        return;
+      }
       const session = await new StartWorkoutService(db).startFromActivePlan();
       navigation.navigate('WorkoutSession', { workoutId: session.id });
     } catch (error) {
@@ -51,12 +59,24 @@ export const HomePage = () => {
         {activePlan ? (
           <>
             <Text style={{ color: colors.text, fontSize: 22, fontWeight: '800' }}>{activePlan.name}</Text>
-            <Button onPress={startWorkout}>Start workout</Button>
+            <Button onPress={startWorkout}>{activeWorkout ? 'Continue workout' : 'Start workout'}</Button>
           </>
         ) : (
           <EmptyState text="Create and activate a plan to start logging workouts offline." />
         )}
       </Card>
+      {activeWorkout ? (
+        <Card>
+          <Text style={{ color: colors.muted, fontWeight: '700' }}>Active workout</Text>
+          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>
+            {activeWorkout.trainingDayNameSnapshot ?? 'Workout'}
+          </Text>
+          <Text style={{ color: colors.muted }}>{activeWorkout.planNameSnapshot ?? 'Current program'}</Text>
+          <Button onPress={() => navigation.navigate('WorkoutSession', { workoutId: activeWorkout.id })}>
+            Continue
+          </Button>
+        </Card>
+      ) : null}
       <WorkoutSummaryCard session={lastWorkout} />
     </Screen>
   );

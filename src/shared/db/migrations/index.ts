@@ -3,8 +3,18 @@ import type { Database } from '../types';
 import { initialSchemaMigration } from './001_initial_schema';
 import { settingsPreferencesMigration } from './002_settings_preferences';
 import { pruneOrphanWorkoutHistoryMigration } from './003_prune_orphan_workout_history';
+import { workoutSetRestTrackingMigration } from './004_workout_set_rest_tracking';
+import { timerSoundPreferencesMigration } from './005_timer_sound_preferences';
+import { workoutSetRestTargetMigration } from './006_workout_set_rest_target';
 
-const migrations = [initialSchemaMigration, settingsPreferencesMigration, pruneOrphanWorkoutHistoryMigration] as const;
+const migrations = [
+  initialSchemaMigration,
+  settingsPreferencesMigration,
+  pruneOrphanWorkoutHistoryMigration,
+  workoutSetRestTrackingMigration,
+  timerSoundPreferencesMigration,
+  workoutSetRestTargetMigration,
+] as const;
 
 type MigrationRow = { id: number };
 

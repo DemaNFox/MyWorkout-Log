@@ -115,7 +115,9 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
     <Screen title={plan.name}>
       <Card>
         <Text style={{ color: colors.muted }}>{plan.status}</Text>
-        <Button onPress={activate}>Make active</Button>
+        <Button disabled={plan.status === 'active'} onPress={activate} variant={plan.status === 'active' ? 'secondary' : 'primary'}>
+          {plan.status === 'active' ? 'Active' : 'Make active'}
+        </Button>
         <Button onPress={confirmDeletePlan} variant="danger">Delete plan</Button>
       </Card>
       <Card>

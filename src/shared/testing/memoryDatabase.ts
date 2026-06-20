@@ -1,4 +1,4 @@
-import type { Database, SqlValue } from '../db/types';
+import type { Database, ExecuteResult, SqlValue } from '../db/types';
 
 type Row = Record<string, SqlValue>;
 
@@ -7,46 +7,55 @@ const normalize = (sql: string): string => sql.replace(/\s+/g, ' ').trim().toLow
 export class MemoryDatabase implements Database {
   readonly tables = new Map<string, Row[]>();
 
-  async execute(sql: string, params: readonly SqlValue[] = []): Promise<void> {
+  async execute(sql: string, params: readonly SqlValue[] = []): Promise<ExecuteResult> {
     const query = normalize(sql);
     if (query.startsWith('create table')) {
       const table = query.match(/create table if not exists ([a-z_]+)/)?.[1];
       if (table) {
         this.tables.set(table, this.tables.get(table) ?? []);
       }
-      return;
+      return { changes: 0 };
     }
     if (query.startsWith('delete from')) {
+      let changes = 0;
       const table = query.match(/delete from ([a-z_]+)/)?.[1];
       if (table) {
+        const rows = this.tables.get(table) ?? [];
         if (query.includes('where id = ?')) {
-          this.tables.set(
-            table,
-            (this.tables.get(table) ?? []).filter(row => row.id !== params[0]),
-          );
+          const nextRows = rows.filter(row => row.id !== params[0]);
+          changes = rows.length - nextRows.length;
+          this.tables.set(table, nextRows);
         } else if (query.includes('where source_plan_id = ?')) {
-          this.tables.set(
-            table,
-            (this.tables.get(table) ?? []).filter(row => row.source_plan_id !== params[0]),
-          );
+          const nextRows = rows.filter(row => row.source_plan_id !== params[0]);
+          changes = rows.length - nextRows.length;
+          this.tables.set(table, nextRows);
         } else if (query.includes('where source_planned_exercise_id = ?')) {
-          this.tables.set(
-            table,
-            (this.tables.get(table) ?? []).filter(row => row.source_planned_exercise_id !== params[0]),
-          );
+          const nextRows = rows.filter(row => row.source_planned_exercise_id !== params[0]);
+          changes = rows.length - nextRows.length;
+          this.tables.set(table, nextRows);
+        } else if (query.includes('where workout_exercise_id = ?')) {
+          const nextRows = rows.filter(row => row.workout_exercise_id !== params[0]);
+          changes = rows.length - nextRows.length;
+          this.tables.set(table, nextRows);
+        } else if (query.includes('where workout_session_id = ?')) {
+          const nextRows = rows.filter(row => row.workout_session_id !== params[0]);
+          changes = rows.length - nextRows.length;
+          this.tables.set(table, nextRows);
         } else {
+          changes = rows.length;
           this.tables.set(table, []);
         }
       }
-      return;
+      return { changes };
     }
     if (query.startsWith('insert into')) {
       this.insert(sql, params);
-      return;
+      return { changes: 1 };
     }
     if (query.startsWith('update')) {
-      this.update(sql, params);
+      return { changes: this.update(sql, params) };
     }
+    return { changes: 0 };
   }
 
   async getAll<T>(sql: string, params: readonly SqlValue[] = []): Promise<T[]> {
@@ -75,25 +84,28 @@ export class MemoryDatabase implements Database {
     this.tables.set(table, [...(this.tables.get(table) ?? []), row]);
   }
 
-  private update(sql: string, params: readonly SqlValue[]): void {
+  private update(sql: string, params: readonly SqlValue[]): number {
     const table = sql.match(/update ([a-z_]+)/i)?.[1];
     const setPart = sql.match(/set (.+) where/i)?.[1];
     if (!table || !setPart) {
-      return;
+      return 0;
     }
     const assignments = setPart.split(',').map(part => part.trim().split(' = ')[0]);
     const id = params[assignments.length];
     const rows = this.tables.get(table) ?? [];
+    let changes = 0;
     rows.forEach(row => {
       if (row.id !== id) {
         return;
       }
+      changes += 1;
       assignments.forEach((column, index) => {
         if (column) {
           row[column] = params[index] ?? null;
         }
       });
     });
+    return changes;
   }
 
   private select(sql: string, params: readonly SqlValue[]): Row[] {

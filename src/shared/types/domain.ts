@@ -4,7 +4,12 @@ export type WorkoutStatus = 'planned' | 'completed' | 'skipped' | 'interrupted';
 
 export type WeightUnit = 'kg' | 'lb';
 
-export type ImportExportType = 'workout-plan' | 'workout-session' | 'full-backup';
+export type ImportExportType =
+  | 'workout-plan'
+  | 'workout-programs'
+  | 'workout-session'
+  | 'program-history'
+  | 'full-backup';
 
 export type TrendDirection = 'up' | 'down' | 'same' | 'none';
 

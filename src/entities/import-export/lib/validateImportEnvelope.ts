@@ -1,6 +1,6 @@
 import { AppError } from '@shared/lib/errors';
 
-import type { ImportEnvelope, WorkoutPlanPayload } from '../model/types';
+import type { ImportEnvelope, WorkoutPlanPayload, WorkoutProgramsPayload } from '../model/types';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -10,6 +10,9 @@ const isNonEmptyString = (value: unknown): value is string =>
 
 const isNonNegativeNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
+const isNullableString = (value: unknown): value is string | null =>
+  value === null || typeof value === 'string';
 
 const validatePlanPayload = (payload: unknown): payload is WorkoutPlanPayload => {
   if (!isRecord(payload) || !isNonEmptyString(payload.name) || !Array.isArray(payload.days)) {
@@ -29,11 +32,18 @@ const validatePlanPayload = (payload: unknown): payload is WorkoutPlanPayload =>
         exercise.targetSets > 0 &&
         isNonNegativeNumber(exercise.targetReps) &&
         isNonNegativeNumber(exercise.targetWeight) &&
+        (!('note' in exercise) || isNullableString(exercise.note)) &&
         isNonNegativeNumber(exercise.order)
       );
     });
   });
 };
+
+const validateProgramsPayload = (payload: unknown): payload is WorkoutProgramsPayload =>
+  isRecord(payload) &&
+  Array.isArray(payload.programs) &&
+  payload.programs.length > 0 &&
+  payload.programs.every(validatePlanPayload);
 
 export const parseImportEnvelope = (raw: string): ImportEnvelope => {
   let parsed: unknown;
@@ -50,6 +60,9 @@ export const parseImportEnvelope = (raw: string): ImportEnvelope => {
     throw new AppError('Import schema version is not supported', 'import.unsupportedVersion');
   }
   if (parsed.type === 'workout-plan' && validatePlanPayload(parsed.payload)) {
+    return parsed as unknown as ImportEnvelope;
+  }
+  if (parsed.type === 'workout-programs' && validateProgramsPayload(parsed.payload)) {
     return parsed as unknown as ImportEnvelope;
   }
   if (parsed.type === 'full-backup' && isRecord(parsed.payload)) {

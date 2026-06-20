@@ -35,6 +35,10 @@ export interface WorkoutSet {
   actualReps: number;
   completed: boolean;
   completedAt: string | null;
+  restStartedAt: string | null;
+  restFinishedAt: string | null;
+  restDurationSec: number | null;
+  restTargetSec: number | null;
   createdAt: string;
   updatedAt: string;
 }

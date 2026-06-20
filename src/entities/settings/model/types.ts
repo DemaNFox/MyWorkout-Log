@@ -1,7 +1,7 @@
 import type { WeightUnit } from '@shared/types/domain';
 import type { ThemeMode } from '@shared/ui/theme';
 
-export type TimerAlertMode = 'silent' | 'vibrate';
+export type TimerAlertMode = 'silent' | 'vibrate' | 'sound' | 'sound-vibrate';
 
 export interface UserSettings {
   id: 'default';
@@ -10,6 +10,9 @@ export interface UserSettings {
   dateFormat: string | null;
   themeMode: ThemeMode;
   timerAlert: TimerAlertMode;
+  timerSoundUri: string | null;
+  timerSoundTitle: string | null;
+  timerSoundVolume: number;
   createdAt: string;
   updatedAt: string;
 }
