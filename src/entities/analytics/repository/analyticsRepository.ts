@@ -1,6 +1,7 @@
 import type { Database } from '@shared/db/types';
 
 import { withTrends } from '../lib/calculateExerciseDynamics';
+import { selectExercisePerformance } from '../lib/selectExercisePerformance';
 import type { ExerciseHistoryRow, ExerciseProgressPoint } from '../model/types';
 
 type HistorySqlRow = {
@@ -67,26 +68,34 @@ export class AnalyticsRepository {
        ORDER BY ws.started_at ASC, wset.set_index ASC`,
       [exerciseName, activePlanId],
     );
-    const grouped = new Map<string, Omit<ExerciseHistoryRow, 'trend'>>();
+    const grouped = new Map<string, { date: string; sets: Array<{ actualWeight: number; actualReps: number }> }>();
     rows.forEach(row => {
       const key = `${row.workoutSessionId}:${row.workoutExerciseId}`;
       const existing = grouped.get(key);
-      const isBetter =
-        !existing ||
-        row.actualWeight > existing.bestWeight ||
-        (row.actualWeight === existing.bestWeight && row.actualReps > existing.repsAtBestWeight);
-
       grouped.set(key, {
-        workoutSessionId: row.workoutSessionId,
-        workoutExerciseId: row.workoutExerciseId,
         date: row.date ?? '',
-        bestWeight: isBetter ? row.actualWeight : existing.bestWeight,
-        repsAtBestWeight: isBetter ? row.actualReps : existing.repsAtBestWeight,
-        completedSets: (existing?.completedSets ?? 0) + 1,
+        sets: [...(existing?.sets ?? []), { actualWeight: row.actualWeight, actualReps: row.actualReps }],
       });
     });
 
-    return withTrends([...grouped.values()]);
+    return withTrends(
+      [...grouped.entries()].flatMap(([key, group]) => {
+        const [workoutSessionId, workoutExerciseId] = key.split(':');
+        const performance = selectExercisePerformance(group.sets);
+        if (!performance || !workoutSessionId || !workoutExerciseId) {
+          return [];
+        }
+        return [
+          {
+            workoutSessionId,
+            workoutExerciseId,
+            date: group.date,
+            ...performance,
+            completedSets: group.sets.length,
+          },
+        ];
+      }),
+    );
   }
 
   async getProgress(exerciseName: string): Promise<ExerciseProgressPoint[]> {

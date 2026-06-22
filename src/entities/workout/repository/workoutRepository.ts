@@ -234,12 +234,34 @@ export class WorkoutRepository {
     );
   }
 
+  async updateCompletedSetResult(setId: string, actualWeight: number, actualReps: number): Promise<void> {
+    assertNonNegative(actualWeight, 'Weight cannot be negative');
+    assertNonNegative(actualReps, 'Reps cannot be negative');
+    const timestamp = nowIso();
+    const result = await this.db.execute(
+      'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, updated_at = ? WHERE id = ? AND completed = 1',
+      [actualWeight, actualReps, timestamp, setId],
+    );
+    if (result.changes === 0) {
+      throw new AppError('Completed set was not found', 'workout.completedSetNotFound');
+    }
+  }
+
   async startRest(setId: string, targetSec: number): Promise<void> {
     assertNonNegative(targetSec, 'Rest target cannot be negative');
     const timestamp = nowIso();
     await this.db.execute(
       'UPDATE workout_sets SET rest_started_at = ?, rest_finished_at = ?, rest_duration_sec = ?, rest_target_sec = ?, updated_at = ? WHERE id = ?',
       [timestamp, null, null, targetSec, timestamp, setId],
+    );
+  }
+
+  async updateRestTarget(setId: string, targetSec: number): Promise<void> {
+    assertNonNegative(targetSec, 'Rest target cannot be negative');
+    const timestamp = nowIso();
+    await this.db.execute(
+      'UPDATE workout_sets SET rest_target_sec = ?, updated_at = ? WHERE id = ? AND rest_started_at IS NOT NULL AND rest_finished_at IS NULL',
+      [targetSec, timestamp, setId],
     );
   }
 

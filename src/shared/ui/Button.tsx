@@ -1,6 +1,7 @@
 import type { PropsWithChildren } from 'react';
 import { Pressable, Text } from 'react-native';
 
+import { useLayoutMetrics } from './layout';
 import { spacing, useThemeColors } from './theme';
 
 interface ButtonProps extends PropsWithChildren {
@@ -11,6 +12,7 @@ interface ButtonProps extends PropsWithChildren {
 
 export const Button = ({ children, onPress, variant = 'primary', disabled = false }: ButtonProps) => {
   const colors = useThemeColors();
+  const layout = useLayoutMetrics();
   const isSecondary = variant === 'secondary';
 
   return (
@@ -20,11 +22,11 @@ export const Button = ({ children, onPress, variant = 'primary', disabled = fals
       onPress={onPress}
       style={({ pressed }) => [
         {
-          minHeight: 48,
+          minHeight: layout.controlMinHeight,
           borderRadius: 8,
           alignItems: 'center',
           justifyContent: 'center',
-          paddingHorizontal: spacing.lg,
+          paddingHorizontal: layout.compact ? spacing.md : spacing.lg,
           paddingVertical: spacing.md,
           backgroundColor: variant === 'danger' ? colors.danger : isSecondary ? colors.secondarySurface : colors.primary,
           borderWidth: isSecondary ? 1 : 0,

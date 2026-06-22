@@ -6,6 +6,9 @@ export interface ExerciseHistoryRow {
   date: string;
   bestWeight: number;
   repsAtBestWeight: number;
+  setsAtBestWeight: number;
+  bestSingleWeight: number;
+  repsAtBestSingleWeight: number;
   completedSets: number;
   trend: TrendDirection;
 }

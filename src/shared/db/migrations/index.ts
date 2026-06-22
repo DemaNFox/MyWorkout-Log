@@ -6,6 +6,7 @@ import { pruneOrphanWorkoutHistoryMigration } from './003_prune_orphan_workout_h
 import { workoutSetRestTrackingMigration } from './004_workout_set_rest_tracking';
 import { timerSoundPreferencesMigration } from './005_timer_sound_preferences';
 import { workoutSetRestTargetMigration } from './006_workout_set_rest_target';
+import { restTimerPresetsMigration } from './007_rest_timer_presets';
 
 const migrations = [
   initialSchemaMigration,
@@ -14,6 +15,7 @@ const migrations = [
   workoutSetRestTrackingMigration,
   timerSoundPreferencesMigration,
   workoutSetRestTargetMigration,
+  restTimerPresetsMigration,
 ] as const;
 
 type MigrationRow = { id: number };

@@ -43,6 +43,9 @@ export interface FullBackupPayload {
     | 'timerSoundUri'
     | 'timerSoundTitle'
     | 'timerSoundVolume'
+    | 'restPreset1Sec'
+    | 'restPreset2Sec'
+    | 'restPreset3Sec'
   >;
   plans: Plan[];
   trainingDays: TrainingDay[];

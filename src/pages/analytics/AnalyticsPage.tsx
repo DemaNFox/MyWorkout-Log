@@ -36,6 +36,23 @@ export const AnalyticsPage = () => {
     [history],
   );
 
+  const bestSingle = useMemo(
+    () =>
+      history.reduce<ExerciseHistoryRow | null>((currentBest, row) => {
+        if (!currentBest) {
+          return row;
+        }
+        if (row.bestSingleWeight > currentBest.bestSingleWeight) {
+          return row;
+        }
+        if (row.bestSingleWeight === currentBest.bestSingleWeight && row.repsAtBestSingleWeight > currentBest.repsAtBestSingleWeight) {
+          return row;
+        }
+        return currentBest;
+      }, null),
+    [history],
+  );
+
   const load = useCallback(async () => {
     const repository = new AnalyticsRepository(db);
     const nextNames = await repository.listExerciseNames();
@@ -98,10 +115,15 @@ export const AnalyticsPage = () => {
 
       {selected && best ? (
         <Card>
-          <Text style={{ color: colors.muted, fontWeight: '700' }}>Best result</Text>
+          <Text style={{ color: colors.muted, fontWeight: '700' }}>Best working result</Text>
           <Text style={{ color: colors.text, fontSize: 24, fontWeight: '800' }}>
             {best.bestWeight} x {best.repsAtBestWeight}
           </Text>
+          {bestSingle ? (
+            <Text style={{ color: colors.muted }}>
+              Single set PR: {bestSingle.bestSingleWeight} x {bestSingle.repsAtBestSingleWeight}
+            </Text>
+          ) : null}
           <Text style={{ color: colors.muted }}>
             {history.length} workout{history.length === 1 ? '' : 's'} logged for {selected}
           </Text>
@@ -122,7 +144,7 @@ export const AnalyticsPage = () => {
               gap: 8,
             }}>
             <Text style={{ color: colors.muted, flex: 1, fontWeight: '800' }}>Date</Text>
-            <Text style={{ color: colors.muted, width: 72, fontWeight: '800' }}>Best</Text>
+            <Text style={{ color: colors.muted, width: 82, fontWeight: '800' }}>Working</Text>
             <Text style={{ color: colors.muted, width: 48, fontWeight: '800' }}>Sets</Text>
             <Text style={{ color: colors.muted, width: 56, fontWeight: '800' }}>Trend</Text>
           </View>
@@ -138,7 +160,7 @@ export const AnalyticsPage = () => {
                 gap: 8,
               }}>
               <Text style={{ color: colors.text, flex: 1 }}>{row.date.slice(0, 10)}</Text>
-              <Text style={{ color: colors.text, width: 72 }}>
+              <Text style={{ color: colors.text, width: 82 }}>
                 {row.bestWeight} x {row.repsAtBestWeight}
               </Text>
               <Text style={{ color: colors.text, width: 48 }}>{row.completedSets}</Text>

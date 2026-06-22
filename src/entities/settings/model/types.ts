@@ -13,6 +13,9 @@ export interface UserSettings {
   timerSoundUri: string | null;
   timerSoundTitle: string | null;
   timerSoundVolume: number;
+  restPreset1Sec: number;
+  restPreset2Sec: number;
+  restPreset3Sec: number;
   createdAt: string;
   updatedAt: string;
 }

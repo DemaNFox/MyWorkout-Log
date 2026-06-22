@@ -1,5 +1,6 @@
 import { Text, TextInput, View } from 'react-native';
 
+import { useLayoutMetrics } from './layout';
 import { spacing, useThemeColors } from './theme';
 
 interface TextFieldProps {
@@ -8,27 +9,31 @@ interface TextFieldProps {
   onChangeText: (value: string) => void;
   keyboardType?: 'default' | 'numeric';
   placeholder?: string;
+  editable?: boolean;
 }
 
-export const TextField = ({ label, value, onChangeText, keyboardType = 'default', placeholder }: TextFieldProps) => {
+export const TextField = ({ label, value, onChangeText, keyboardType = 'default', placeholder, editable = true }: TextFieldProps) => {
   const colors = useThemeColors();
+  const layout = useLayoutMetrics();
 
   return (
     <View style={{ gap: spacing.xs }}>
       <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700' }}>{label}</Text>
       <TextInput
         keyboardType={keyboardType}
+        editable={editable}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
         style={{
-          minHeight: 48,
-          backgroundColor: colors.surface,
+          minHeight: layout.controlMinHeight,
+          backgroundColor: editable ? colors.surface : colors.secondarySurface,
           borderColor: colors.border,
           borderRadius: 8,
           borderWidth: 1,
           color: colors.text,
           fontSize: 16,
+          opacity: editable ? 1 : 0.78,
           paddingHorizontal: spacing.md,
         }}
         value={value}

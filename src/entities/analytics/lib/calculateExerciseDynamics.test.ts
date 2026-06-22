@@ -21,6 +21,9 @@ describe('calculateTrend', () => {
         date: '2026-06-01T00:00:00.000Z',
         bestWeight: 75,
         repsAtBestWeight: 8,
+        setsAtBestWeight: 3,
+        bestSingleWeight: 75,
+        repsAtBestSingleWeight: 8,
         completedSets: 3,
       },
       {
@@ -29,6 +32,9 @@ describe('calculateTrend', () => {
         date: '2026-06-08T00:00:00.000Z',
         bestWeight: 77.5,
         repsAtBestWeight: 8,
+        setsAtBestWeight: 3,
+        bestSingleWeight: 77.5,
+        repsAtBestSingleWeight: 8,
         completedSets: 3,
       },
     ]);

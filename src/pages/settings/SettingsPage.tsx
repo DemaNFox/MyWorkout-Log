@@ -33,12 +33,20 @@ export const SettingsPage = () => {
   const [exportPickerVisible, setExportPickerVisible] = useState(false);
   const [exportPickerMode, setExportPickerMode] = useState<ExportPickerMode>('history');
   const [timerAlertPickerVisible, setTimerAlertPickerVisible] = useState(false);
+  const [restPresetFields, setRestPresetFields] = useState(['60', '90', '120']);
   const [importText, setImportText] = useState('');
   const [exportText, setExportText] = useState('');
   const [exportFileName, setExportFileName] = useState<string | null>(null);
 
   useEffect(() => {
-    void new SettingsRepository(db).get().then(setSettings);
+    void new SettingsRepository(db).get().then(nextSettings => {
+      setSettings(nextSettings);
+      setRestPresetFields([
+        String(nextSettings.restPreset1Sec),
+        String(nextSettings.restPreset2Sec),
+        String(nextSettings.restPreset3Sec),
+      ]);
+    });
     void new PlanRepository(db).list().then(nextPlans => {
       setPlans(nextPlans);
       setSelectedPlanIds(nextPlans.filter(plan => plan.status === 'active').map(plan => plan.id));
@@ -49,7 +57,15 @@ export const SettingsPage = () => {
     patch: Partial<
       Pick<
         UserSettings,
-        'themeMode' | 'timerAlert' | 'timerSoundUri' | 'timerSoundTitle' | 'timerSoundVolume'
+        | 'defaultRestSec'
+        | 'themeMode'
+        | 'timerAlert'
+        | 'timerSoundUri'
+        | 'timerSoundTitle'
+        | 'timerSoundVolume'
+        | 'restPreset1Sec'
+        | 'restPreset2Sec'
+        | 'restPreset3Sec'
       >
     >,
   ) => {
@@ -77,6 +93,24 @@ export const SettingsPage = () => {
 
   const updateTimerVolume = async (volume: number) => {
     await updateSettings({ timerSoundVolume: Math.min(1, Math.max(0, volume)) });
+  };
+
+  const saveRestPresets = async () => {
+    const values = restPresetFields.map(value => Number(value));
+    if (values.some(value => !Number.isFinite(value) || value <= 0)) {
+      Alert.alert('Cannot save rest presets', 'Preset values must be positive seconds.');
+      return;
+    }
+    const roundedValues = values.map(value => Math.round(value));
+    const first = roundedValues[0] ?? 60;
+    const second = roundedValues[1] ?? 90;
+    const third = roundedValues[2] ?? 120;
+    await updateSettings({
+      defaultRestSec: second,
+      restPreset1Sec: first,
+      restPreset2Sec: second,
+      restPreset3Sec: third,
+    });
   };
 
   const backup = async () => {
@@ -185,6 +219,23 @@ export const SettingsPage = () => {
         <Text style={{ color: colors.muted }}>
           Unit: {settings?.weightUnit ?? 'kg'} - Rest: {settings?.defaultRestSec ?? 90}s
         </Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {restPresetFields.map((value, index) => (
+            <View key={`rest-preset-${index}`} style={{ flex: 1 }}>
+              <TextField
+                keyboardType="numeric"
+                label={`Rest ${index + 1}`}
+                onChangeText={nextValue =>
+                  setRestPresetFields(current => current.map((item, itemIndex) => (itemIndex === index ? nextValue : item)))
+                }
+                value={value}
+              />
+            </View>
+          ))}
+        </View>
+        <Button onPress={() => void saveRestPresets()} variant="secondary">
+          Save rest presets
+        </Button>
       </Card>
 
       <Card>

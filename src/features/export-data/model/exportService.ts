@@ -3,6 +3,7 @@ import { TrainingDayRepository } from '@entities/training-day/repository/trainin
 import { SettingsRepository } from '@entities/settings/repository/settingsRepository';
 import { WorkoutRepository } from '@entities/workout/repository/workoutRepository';
 import { withTrends } from '@entities/analytics/lib/calculateExerciseDynamics';
+import { selectExercisePerformance } from '@entities/analytics/lib/selectExercisePerformance';
 import type {
   FullBackupExport,
   ProgramHistoryExport,
@@ -104,6 +105,9 @@ export class ExportService {
           timerSoundUri: settings.timerSoundUri,
           timerSoundTitle: settings.timerSoundTitle,
           timerSoundVolume: settings.timerSoundVolume,
+          restPreset1Sec: settings.restPreset1Sec,
+          restPreset2Sec: settings.restPreset2Sec,
+          restPreset3Sec: settings.restPreset3Sec,
         },
         plans,
         trainingDays,
@@ -200,20 +204,9 @@ const buildExerciseProgress = (
   sessions.forEach(session => {
     session.exercises.forEach(exercise => {
       const completedSets = exercise.sets.filter(set => set.completed);
-      const bestSet = completedSets.reduce<ProgramHistorySession['exercises'][number]['sets'][number] | null>(
-        (best, set) => {
-          if (!best || set.actualWeight > best.actualWeight) {
-            return set;
-          }
-          if (set.actualWeight === best.actualWeight && set.actualReps > best.actualReps) {
-            return set;
-          }
-          return best;
-        },
-        null,
-      );
+      const performance = selectExercisePerformance(completedSets);
 
-      if (!bestSet) {
+      if (!performance) {
         return;
       }
 
@@ -223,8 +216,7 @@ const buildExerciseProgress = (
           workoutSessionId: session.id,
           workoutExerciseId: exercise.id,
           date: session.date ?? '',
-          bestWeight: bestSet.actualWeight,
-          repsAtBestWeight: bestSet.actualReps,
+          ...performance,
           completedSets: completedSets.length,
         },
       ]);

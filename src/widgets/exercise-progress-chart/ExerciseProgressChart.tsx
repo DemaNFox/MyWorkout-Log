@@ -21,7 +21,7 @@ export const ExerciseProgressChart = ({ rows }: ExerciseProgressChartProps) => {
     <Card>
       <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Progress chart</Text>
 
-      <Text style={{ color: colors.muted, fontWeight: '700' }}>Weight</Text>
+      <Text style={{ color: colors.muted, fontWeight: '700' }}>Working weight</Text>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, minHeight: 132 }}>
         {visibleRows.map(row => (
           <View key={`weight-${row.workoutExerciseId}`} style={{ flex: 1, alignItems: 'center', gap: 6 }}>
@@ -39,7 +39,7 @@ export const ExerciseProgressChart = ({ rows }: ExerciseProgressChartProps) => {
         ))}
       </View>
 
-      <Text style={{ color: colors.muted, fontWeight: '700' }}>Reps at best weight</Text>
+      <Text style={{ color: colors.muted, fontWeight: '700' }}>Reps at working weight</Text>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, minHeight: 112 }}>
         {visibleRows.map(row => (
           <View key={`reps-${row.workoutExerciseId}`} style={{ flex: 1, alignItems: 'center', gap: 6 }}>

@@ -1,4 +1,4 @@
-import { NativeModules, Vibration } from 'react-native';
+import { NativeModules, PermissionsAndroid, Platform, Vibration } from 'react-native';
 
 import type { TimerAlertMode } from '@entities/settings/model/types';
 
@@ -28,6 +28,11 @@ export const playTimerAlert = (mode: TimerAlertMode, soundUri: string | null, vo
 
 export const pickTimerSound = async (): Promise<{ uri: string | null; title: string | null }> =>
   workoutTimerSound?.pickNotificationSound?.() ?? { uri: null, title: null };
+
+export const requestTimerAlertPermission = async (): Promise<boolean> =>
+  Platform.OS !== 'android' ||
+  Platform.Version < 33 ||
+  (await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)) === PermissionsAndroid.RESULTS.GRANTED;
 
 export const scheduleTimerAlert = (
   delayMs: number,
