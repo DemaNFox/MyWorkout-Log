@@ -37,10 +37,12 @@ describe('ExportService', () => {
             order: 1,
             exercises: [
               {
+                metricType: 'reps',
                 name: 'Bench Press',
                 targetSets: 4,
                 targetReps: 5,
                 targetWeight: 80,
+                targetDurationSec: null,
                 note: null,
                 order: 1,
               },
@@ -87,6 +89,7 @@ describe('ExportService', () => {
       noteSnapshot: null,
       order: 1,
     });
+    await workouts.updateExerciseNote(firstExercise.id, 'Pause on the chest');
     const firstSet = await workouts.addSet({
       workoutExerciseId: firstExercise.id,
       setIndex: 1,
@@ -96,6 +99,17 @@ describe('ExportService', () => {
       actualReps: 5,
     });
     await workouts.completeSet(firstSet.id, 80, 5);
+    await workouts.startRest(firstSet.id, 90);
+    await workouts.finishRest(firstSet.id, 75);
+    const variedSet = await workouts.addSet({
+      workoutExerciseId: firstExercise.id,
+      setIndex: 2,
+      targetWeight: 80,
+      targetReps: 5,
+      actualWeight: 80,
+      actualReps: 5,
+    });
+    await workouts.completeSet(variedSet.id, 70, 8);
 
     const secondSession = await workouts.createSession({
       sourcePlanId: inactivePlan.id,
@@ -136,6 +150,29 @@ describe('ExportService', () => {
         .flatMap(session => session.exercises)
         .flatMap(exercise => exercise.sets)
         .some(set => set.actualWeight === 82.5 && set.actualReps === 5 && set.completed),
+    ).toBe(true);
+    expect(
+      exportedProgram?.sessions
+        .flatMap(session => session.exercises)
+        .flatMap(exercise => exercise.sets),
+    ).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        index: 1,
+        actualWeight: 80,
+        actualReps: 5,
+        restDurationSec: 75,
+        restTargetSec: 90,
+      }),
+      expect.objectContaining({
+        index: 2,
+        actualWeight: 70,
+        actualReps: 8,
+      }),
+    ]));
+    expect(
+      exportedProgram?.sessions
+        .flatMap(session => session.exercises)
+        .some(exercise => exercise.note === 'Pause on the chest'),
     ).toBe(true);
     expect(exportedProgram?.exerciseProgress).toEqual([
       {

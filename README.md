@@ -47,9 +47,20 @@ The app stores:
 
 - plans, training days, and planned exercises;
 - workout sessions, workout exercises, and workout sets;
-- completed set values: weight, reps, timestamps;
+- repetition-based and timed exercises;
+- completed set values: weight, reps, duration, timestamps;
 - rest timer values per set: target seconds, start/end time, logged duration;
+- exercise comments that carry into future workouts;
 - app settings, including theme and timer alert preferences.
+
+## Workout Flow
+
+- Select a specific training day before starting a workout.
+- Resume an active workout at the first unfinished exercise.
+- Edit planned exercises, including their metric type and targets.
+- Timed sets use an exercise timer independent from the rest timer.
+- Completing a set carries its edited values into the next pending set.
+- Canceling an active workout deletes the unfinished session after confirmation.
 
 History and analytics are not separate storage layers. They are views/calculations over the same local SQLite records:
 

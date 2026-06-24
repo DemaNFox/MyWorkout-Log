@@ -10,6 +10,7 @@ import { Card } from '@shared/ui/Card';
 import { EmptyState } from '@shared/ui/EmptyState';
 import { Screen } from '@shared/ui/Screen';
 import { useThemeColors } from '@shared/ui/theme';
+import { formatDuration } from '@shared/lib/date';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutDetails'>;
 
@@ -35,9 +36,16 @@ export const WorkoutDetailsPage = ({ route }: Props) => {
       {details.exercises.map(exercise => (
         <Card key={exercise.id}>
           <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>{exercise.nameSnapshot}</Text>
+          {exercise.noteSnapshot ? (
+            <Text style={{ color: colors.muted }}>{exercise.noteSnapshot}</Text>
+          ) : null}
           {exercise.sets.map(set => (
             <Text key={set.id} style={{ color: colors.text }}>
-              Set {set.setIndex}: {set.actualWeight} x {set.actualReps} {set.completed ? 'done' : 'open'}
+              Set {set.setIndex}:{' '}
+              {exercise.metricType === 'duration'
+                ? formatDuration(set.actualDurationSec)
+                : `${set.actualWeight} x ${set.actualReps}`}{' '}
+              {set.completed ? 'done' : 'open'}
             </Text>
           ))}
         </Card>

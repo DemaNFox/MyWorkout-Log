@@ -4,6 +4,7 @@ import type { Plan } from '@entities/plan/model/types';
 import type { PlannedExercise, TrainingDay } from '@entities/training-day/model/types';
 import type { WorkoutExercise, WorkoutSession, WorkoutSet } from '@entities/workout/model/types';
 import type { UserSettings } from '@entities/settings/model/types';
+import type { ExerciseMetricType } from '@shared/types/domain';
 
 export interface ExportEnvelope<TPayload, TType extends ImportExportType> {
   schemaVersion: 1;
@@ -19,9 +20,11 @@ export interface WorkoutPlanPayload {
     order: number;
     exercises: Array<{
       name: string;
+      metricType?: ExerciseMetricType;
       targetSets: number;
       targetReps: number;
       targetWeight: number;
+      targetDurationSec?: number | null;
       note: string | null;
       order: number;
     }>;
@@ -68,13 +71,18 @@ export interface ProgramHistoryPayload {
       exercises: Array<{
         id: string;
         name: string;
+        note: string | null;
+        metricType: ExerciseMetricType;
         order: number;
         sets: Array<{
           index: number;
           targetWeight: number | null;
           targetReps: number | null;
+          targetDurationSec: number | null;
           actualWeight: number;
           actualReps: number;
+          actualDurationSec: number | null;
+          exerciseStartedAt: string | null;
           completed: boolean;
           completedAt: string | null;
           restStartedAt: string | null;

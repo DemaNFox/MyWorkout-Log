@@ -6,6 +6,44 @@ import { WorkoutRepository } from '@entities/workout/repository/workoutRepositor
 import { TrainingDayRepository } from './trainingDayRepository';
 
 describe('TrainingDayRepository', () => {
+  it('updates an existing exercise type and parameters', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    const plans = new PlanRepository(db);
+    const trainingDays = new TrainingDayRepository(db);
+    const plan = await plans.create('Program');
+    const day = await trainingDays.createDay(plan.id, 'Core');
+    const exercise = await trainingDays.addExercise({
+      trainingDayId: day.id,
+      name: 'Plank',
+      targetSets: 3,
+      targetReps: 10,
+      targetWeight: 0,
+    });
+
+    await trainingDays.updateExercise({
+      id: exercise.id,
+      name: 'Front plank',
+      metricType: 'duration',
+      targetSets: 4,
+      targetReps: 0,
+      targetWeight: 0,
+      targetDurationSec: 75,
+      note: 'Keep hips level',
+    });
+
+    await expect(trainingDays.listExercises(day.id)).resolves.toEqual([
+      expect.objectContaining({
+        id: exercise.id,
+        name: 'Front plank',
+        metricType: 'duration',
+        targetSets: 4,
+        targetDurationSec: 75,
+        note: 'Keep hips level',
+      }),
+    ]);
+  });
+
   it('deletes workout exercises created from the removed planned exercise', async () => {
     const db = new MemoryDatabase();
     await runMigrations(db);

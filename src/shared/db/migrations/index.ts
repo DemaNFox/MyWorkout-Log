@@ -7,6 +7,8 @@ import { workoutSetRestTrackingMigration } from './004_workout_set_rest_tracking
 import { timerSoundPreferencesMigration } from './005_timer_sound_preferences';
 import { workoutSetRestTargetMigration } from './006_workout_set_rest_target';
 import { restTimerPresetsMigration } from './007_rest_timer_presets';
+import { timedExercisesMigration } from './008_timed_exercises';
+import { exerciseTimerMigration } from './009_exercise_timer';
 
 const migrations = [
   initialSchemaMigration,
@@ -16,6 +18,8 @@ const migrations = [
   timerSoundPreferencesMigration,
   workoutSetRestTargetMigration,
   restTimerPresetsMigration,
+  timedExercisesMigration,
+  exerciseTimerMigration,
 ] as const;
 
 type MigrationRow = { id: number };

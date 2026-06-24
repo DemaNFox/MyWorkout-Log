@@ -39,6 +39,7 @@ export class StartWorkoutService {
         sourcePlannedExerciseId: exercise.id,
         nameSnapshot: exercise.name,
         noteSnapshot: exercise.note,
+        metricType: exercise.metricType,
         order: exercise.order,
       });
       for (let setIndex = 1; setIndex <= exercise.targetSets; setIndex += 1) {
@@ -47,8 +48,10 @@ export class StartWorkoutService {
           setIndex,
           targetWeight: exercise.targetWeight,
           targetReps: exercise.targetReps,
+          targetDurationSec: exercise.targetDurationSec,
           actualWeight: exercise.targetWeight,
           actualReps: exercise.targetReps,
+          actualDurationSec: exercise.targetDurationSec,
         });
       }
     }

@@ -39,9 +39,11 @@ export class ImportService {
             await days.addExercise({
               trainingDayId: day.id,
               name: exercise.name,
+              metricType: exercise.metricType ?? 'reps',
               targetSets: exercise.targetSets,
               targetReps: exercise.targetReps,
               targetWeight: exercise.targetWeight,
+              targetDurationSec: exercise.targetDurationSec ?? null,
               note: exercise.note,
             });
           }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AppState, Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { AppState, Modal, Pressable, Text, TextInput, View, type NativeSyntheticEvent, type TextInputKeyPressEventData } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { useDatabase } from '@app/providers/DatabaseProvider';
@@ -387,6 +387,13 @@ const CustomTimeInput = ({
   seconds,
 }: CustomTimeInputProps) => {
   const colors = useThemeColors();
+  const minutesRef = useRef<TextInput | null>(null);
+
+  const handleSecondsKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
+    if (event.nativeEvent.key === 'Backspace' && seconds.length === 0) {
+      minutesRef.current?.focus();
+    }
+  };
 
   return (
     <View
@@ -404,6 +411,7 @@ const CustomTimeInput = ({
         onBlur={onApply}
         onChangeText={onMinutesChange}
         onSubmitEditing={onApply}
+        ref={minutesRef}
         style={{
           minWidth: 26,
           color: colors.text,
@@ -420,6 +428,7 @@ const CustomTimeInput = ({
         maxLength={2}
         onBlur={onApply}
         onChangeText={onSecondsChange}
+        onKeyPress={handleSecondsKeyPress}
         onSubmitEditing={onApply}
         style={{
           minWidth: 26,

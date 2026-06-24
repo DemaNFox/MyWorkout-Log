@@ -2,6 +2,7 @@ import type { Database } from '@shared/db/types';
 import { nowIso } from '@shared/lib/date';
 import { AppError, assertNonNegative } from '@shared/lib/errors';
 import { createId } from '@shared/lib/id';
+import type { ExerciseMetricType } from '@shared/types/domain';
 
 import type { WorkoutDetails, WorkoutExercise, WorkoutSession, WorkoutSet } from '../model/types';
 
@@ -25,6 +26,7 @@ type ExerciseRow = {
   source_planned_exercise_id: string | null;
   name_snapshot: string;
   note_snapshot: string | null;
+  metric_type?: ExerciseMetricType;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -36,8 +38,11 @@ type SetRow = {
   set_index: number;
   target_weight: number | null;
   target_reps: number | null;
+  target_duration_sec?: number | null;
   actual_weight: number;
   actual_reps: number;
+  actual_duration_sec?: number | null;
+  exercise_started_at?: string | null;
   completed: number;
   completed_at: string | null;
   rest_started_at: string | null;
@@ -72,6 +77,7 @@ const toExercise = (row: ExerciseRow): WorkoutExercise => ({
   sourcePlannedExerciseId: row.source_planned_exercise_id,
   nameSnapshot: row.name_snapshot,
   noteSnapshot: row.note_snapshot,
+  metricType: row.metric_type ?? 'reps',
   order: row.sort_order,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -83,8 +89,11 @@ const toSet = (row: SetRow): WorkoutSet => ({
   setIndex: row.set_index,
   targetWeight: row.target_weight,
   targetReps: row.target_reps,
+  targetDurationSec: row.target_duration_sec ?? null,
   actualWeight: row.actual_weight,
   actualReps: row.actual_reps,
+  actualDurationSec: row.actual_duration_sec ?? null,
+  exerciseStartedAt: row.exercise_started_at ?? null,
   completed: row.completed === 1,
   completedAt: row.completed_at,
   restStartedAt: row.rest_started_at ?? null,
@@ -144,6 +153,7 @@ export class WorkoutRepository {
     sourcePlannedExerciseId: string | null;
     nameSnapshot: string;
     noteSnapshot: string | null;
+    metricType?: ExerciseMetricType;
     order: number;
   }): Promise<WorkoutExercise> {
     const timestamp = nowIso();
@@ -153,20 +163,22 @@ export class WorkoutRepository {
       sourcePlannedExerciseId: input.sourcePlannedExerciseId,
       nameSnapshot: input.nameSnapshot,
       noteSnapshot: input.noteSnapshot,
+      metricType: input.metricType ?? 'reps',
       order: input.order,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
     await this.db.execute(
       `INSERT INTO workout_exercises
-       (id, workout_session_id, source_planned_exercise_id, name_snapshot, note_snapshot, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, workout_session_id, source_planned_exercise_id, name_snapshot, note_snapshot, metric_type, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         exercise.id,
         exercise.workoutSessionId,
         exercise.sourcePlannedExerciseId,
         exercise.nameSnapshot,
         exercise.noteSnapshot,
+        exercise.metricType,
         exercise.order,
         exercise.createdAt,
         exercise.updatedAt,
@@ -180,11 +192,14 @@ export class WorkoutRepository {
     setIndex: number;
     targetWeight: number | null;
     targetReps: number | null;
+    targetDurationSec?: number | null;
     actualWeight: number;
     actualReps: number;
+    actualDurationSec?: number | null;
   }): Promise<WorkoutSet> {
     assertNonNegative(input.actualWeight, 'Weight cannot be negative');
     assertNonNegative(input.actualReps, 'Reps cannot be negative');
+    assertNonNegative(input.actualDurationSec ?? 0, 'Duration cannot be negative');
     const timestamp = nowIso();
     const set: WorkoutSet = {
       id: createId(),
@@ -192,8 +207,11 @@ export class WorkoutRepository {
       setIndex: input.setIndex,
       targetWeight: input.targetWeight,
       targetReps: input.targetReps,
+      targetDurationSec: input.targetDurationSec ?? null,
       actualWeight: input.actualWeight,
       actualReps: input.actualReps,
+      actualDurationSec: input.actualDurationSec ?? null,
+      exerciseStartedAt: null,
       completed: false,
       completedAt: null,
       restStartedAt: null,
@@ -205,16 +223,18 @@ export class WorkoutRepository {
     };
     await this.db.execute(
       `INSERT INTO workout_sets
-       (id, workout_exercise_id, set_index, target_weight, target_reps, actual_weight, actual_reps, completed, completed_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, workout_exercise_id, set_index, target_weight, target_reps, target_duration_sec, actual_weight, actual_reps, actual_duration_sec, completed, completed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         set.id,
         set.workoutExerciseId,
         set.setIndex,
         set.targetWeight,
         set.targetReps,
+        set.targetDurationSec,
         set.actualWeight,
         set.actualReps,
+        set.actualDurationSec,
         set.completed ? 1 : 0,
         set.completedAt,
         set.createdAt,
@@ -224,27 +244,109 @@ export class WorkoutRepository {
     return set;
   }
 
-  async completeSet(setId: string, actualWeight: number, actualReps: number): Promise<void> {
+  async completeSet(
+    setId: string,
+    actualWeight: number,
+    actualReps: number,
+    actualDurationSec: number | null = null,
+  ): Promise<void> {
     assertNonNegative(actualWeight, 'Weight cannot be negative');
     assertNonNegative(actualReps, 'Reps cannot be negative');
+    assertNonNegative(actualDurationSec ?? 0, 'Duration cannot be negative');
     const timestamp = nowIso();
     await this.db.execute(
-      'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, completed = ?, completed_at = ?, updated_at = ? WHERE id = ?',
-      [actualWeight, actualReps, 1, timestamp, timestamp, setId],
+      'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, actual_duration_sec = ?, completed = ?, completed_at = ?, updated_at = ? WHERE id = ?',
+      [actualWeight, actualReps, actualDurationSec, 1, timestamp, timestamp, setId],
     );
   }
 
-  async updateCompletedSetResult(setId: string, actualWeight: number, actualReps: number): Promise<void> {
+  async updateCompletedSetResult(
+    setId: string,
+    actualWeight: number,
+    actualReps: number,
+    actualDurationSec: number | null = null,
+  ): Promise<void> {
     assertNonNegative(actualWeight, 'Weight cannot be negative');
     assertNonNegative(actualReps, 'Reps cannot be negative');
+    assertNonNegative(actualDurationSec ?? 0, 'Duration cannot be negative');
     const timestamp = nowIso();
     const result = await this.db.execute(
-      'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, updated_at = ? WHERE id = ? AND completed = 1',
-      [actualWeight, actualReps, timestamp, setId],
+      'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, actual_duration_sec = ?, updated_at = ? WHERE id = ? AND completed = 1',
+      [actualWeight, actualReps, actualDurationSec, timestamp, setId],
     );
     if (result.changes === 0) {
       throw new AppError('Completed set was not found', 'workout.completedSetNotFound');
     }
+  }
+
+  async updatePendingSetValues(
+    setId: string,
+    input: {
+      actualWeight: number;
+      actualReps: number;
+      actualDurationSec: number | null;
+      targetDurationSec?: number | null;
+    },
+  ): Promise<void> {
+    assertNonNegative(input.actualWeight, 'Weight cannot be negative');
+    assertNonNegative(input.actualReps, 'Reps cannot be negative');
+    assertNonNegative(input.actualDurationSec ?? 0, 'Duration cannot be negative');
+    const timestamp = nowIso();
+    await this.db.execute(
+      `UPDATE workout_sets
+       SET actual_weight = ?, actual_reps = ?, actual_duration_sec = ?,
+           target_duration_sec = ?, updated_at = ?
+       WHERE id = ? AND completed = 0`,
+      [
+        input.actualWeight,
+        input.actualReps,
+        input.actualDurationSec,
+        input.targetDurationSec ?? input.actualDurationSec,
+        timestamp,
+        setId,
+      ],
+    );
+  }
+
+  async startExerciseTimer(setId: string): Promise<void> {
+    const timestamp = nowIso();
+    await this.db.execute(
+      'UPDATE workout_sets SET exercise_started_at = ?, updated_at = ? WHERE id = ? AND completed = 0',
+      [timestamp, timestamp, setId],
+    );
+  }
+
+  async stopExerciseTimer(setId: string, actualDurationSec: number): Promise<void> {
+    assertNonNegative(actualDurationSec, 'Duration cannot be negative');
+    const timestamp = nowIso();
+    await this.db.execute(
+      'UPDATE workout_sets SET exercise_started_at = ?, actual_duration_sec = ?, updated_at = ? WHERE id = ? AND completed = 0',
+      [null, actualDurationSec, timestamp, setId],
+    );
+  }
+
+  async updateExerciseNote(exerciseId: string, note: string): Promise<void> {
+    const exercise = (await this.db.getFirst<ExerciseRow>(
+      'SELECT * FROM workout_exercises WHERE id = ?',
+      [exerciseId],
+    ));
+    if (!exercise) {
+      throw new AppError('Workout exercise was not found', 'workout.exerciseNotFound');
+    }
+    const normalizedNote = note.trim() || null;
+    const timestamp = nowIso();
+    await this.db.transaction(async () => {
+      await this.db.execute(
+        'UPDATE workout_exercises SET note_snapshot = ?, updated_at = ? WHERE id = ?',
+        [normalizedNote, timestamp, exerciseId],
+      );
+      if (exercise.source_planned_exercise_id) {
+        await this.db.execute(
+          'UPDATE planned_exercises SET note = ?, updated_at = ? WHERE id = ?',
+          [normalizedNote, timestamp, exercise.source_planned_exercise_id],
+        );
+      }
+    });
   }
 
   async startRest(setId: string, targetSec: number): Promise<void> {

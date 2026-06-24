@@ -86,7 +86,7 @@ export class MemoryDatabase implements Database {
 
   private update(sql: string, params: readonly SqlValue[]): number {
     const table = sql.match(/update ([a-z_]+)/i)?.[1];
-    const setPart = sql.match(/set (.+) where/i)?.[1];
+    const setPart = sql.match(/set ([\s\S]+) where/i)?.[1];
     if (!table || !setPart) {
       return 0;
     }

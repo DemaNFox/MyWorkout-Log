@@ -6,6 +6,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '@app/navigation/types';
 import { PlanRepository } from '@entities/plan/repository/planRepository';
 import type { Plan } from '@entities/plan/model/types';
+import type { TrainingDay } from '@entities/training-day/model/types';
+import { TrainingDayRepository } from '@entities/training-day/repository/trainingDayRepository';
 import { WorkoutRepository } from '@entities/workout/repository/workoutRepository';
 import type { WorkoutSession } from '@entities/workout/model/types';
 import { StartWorkoutService } from '@features/workout-start/model/startWorkoutService';
@@ -22,12 +24,19 @@ export const HomePage = () => {
   const colors = useThemeColors();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
+  const [trainingDays, setTrainingDays] = useState<TrainingDay[]>([]);
   const [activeWorkout, setActiveWorkout] = useState<WorkoutSession | null>(null);
   const [lastWorkout, setLastWorkout] = useState<WorkoutSession | null>(null);
 
   const load = useCallback(async () => {
     const workoutRepository = new WorkoutRepository(db);
-    setActivePlan(await new PlanRepository(db).getActive());
+    const nextActivePlan = await new PlanRepository(db).getActive();
+    setActivePlan(nextActivePlan);
+    setTrainingDays(
+      nextActivePlan
+        ? await new TrainingDayRepository(db).listDays(nextActivePlan.id)
+        : [],
+    );
     setActiveWorkout(await workoutRepository.getOpenSessionForActivePlan());
     setLastWorkout((await workoutRepository.listSessionsForActivePlan(10)).find(session => session.finishedAt) ?? null);
   }, [db]);
@@ -38,14 +47,14 @@ export const HomePage = () => {
     }, [load]),
   );
 
-  const startWorkout = async () => {
+  const startWorkout = async (dayId: string) => {
     try {
       const openSession = await new WorkoutRepository(db).getOpenSessionForActivePlan();
       if (openSession) {
         navigation.navigate('WorkoutSession', { workoutId: openSession.id });
         return;
       }
-      const session = await new StartWorkoutService(db).startFromActivePlan();
+      const session = await new StartWorkoutService(db).startFromActivePlan(dayId);
       navigation.navigate('WorkoutSession', { workoutId: session.id });
     } catch (error) {
       Alert.alert('Cannot start workout', error instanceof Error ? error.message : 'Unknown error');
@@ -59,7 +68,22 @@ export const HomePage = () => {
         {activePlan ? (
           <>
             <Text style={{ color: colors.text, fontSize: 22, fontWeight: '800' }}>{activePlan.name}</Text>
-            <Button onPress={startWorkout}>{activeWorkout ? 'Continue workout' : 'Start workout'}</Button>
+            {activeWorkout ? (
+              <Button onPress={() => navigation.navigate('WorkoutSession', { workoutId: activeWorkout.id })}>
+                Continue {activeWorkout.trainingDayNameSnapshot ?? 'workout'}
+              </Button>
+            ) : trainingDays.length > 0 ? (
+              <>
+                <Text style={{ color: colors.muted }}>Choose a training day:</Text>
+                {trainingDays.map(day => (
+                  <Button key={day.id} onPress={() => startWorkout(day.id)}>
+                    Start {day.name}
+                  </Button>
+                ))}
+              </>
+            ) : (
+              <EmptyState text="Add at least one training day to the active plan." />
+            )}
           </>
         ) : (
           <EmptyState text="Create and activate a plan to start logging workouts offline." />

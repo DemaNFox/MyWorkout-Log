@@ -10,9 +10,20 @@ interface TextFieldProps {
   keyboardType?: 'default' | 'numeric';
   placeholder?: string;
   editable?: boolean;
+  multiline?: boolean;
+  onBlur?: () => void;
 }
 
-export const TextField = ({ label, value, onChangeText, keyboardType = 'default', placeholder, editable = true }: TextFieldProps) => {
+export const TextField = ({
+  label,
+  value,
+  onChangeText,
+  keyboardType = 'default',
+  placeholder,
+  editable = true,
+  multiline = false,
+  onBlur,
+}: TextFieldProps) => {
   const colors = useThemeColors();
   const layout = useLayoutMetrics();
 
@@ -22,11 +33,14 @@ export const TextField = ({ label, value, onChangeText, keyboardType = 'default'
       <TextInput
         keyboardType={keyboardType}
         editable={editable}
+        multiline={multiline}
+        onBlur={onBlur}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
         style={{
           minHeight: layout.controlMinHeight,
+          maxHeight: multiline ? 120 : undefined,
           backgroundColor: editable ? colors.surface : colors.secondarySurface,
           borderColor: colors.border,
           borderRadius: 8,

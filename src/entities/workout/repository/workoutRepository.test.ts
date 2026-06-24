@@ -1,10 +1,113 @@
 import { PlanRepository } from '@entities/plan/repository/planRepository';
+import { TrainingDayRepository } from '@entities/training-day/repository/trainingDayRepository';
 import { runMigrations } from '@shared/db/migrations';
 import { MemoryDatabase } from '@shared/testing/memoryDatabase';
 
 import { WorkoutRepository } from './workoutRepository';
 
 describe('WorkoutRepository', () => {
+  it('stores exercise timer state separately from rest and saves the note for future workouts', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    const plans = new PlanRepository(db);
+    const days = new TrainingDayRepository(db);
+    const workouts = new WorkoutRepository(db);
+    const plan = await plans.create('Core');
+    const day = await days.createDay(plan.id, 'Day');
+    const plannedExercise = await days.addExercise({
+      trainingDayId: day.id,
+      name: 'Plank',
+      metricType: 'duration',
+      targetSets: 1,
+      targetReps: 0,
+      targetWeight: 0,
+      targetDurationSec: 60,
+    });
+    const session = await workouts.createSession({
+      sourcePlanId: plan.id,
+      sourceTrainingDayId: day.id,
+      planNameSnapshot: plan.name,
+      trainingDayNameSnapshot: day.name,
+    });
+    const exercise = await workouts.addExercise({
+      workoutSessionId: session.id,
+      sourcePlannedExerciseId: plannedExercise.id,
+      nameSnapshot: plannedExercise.name,
+      noteSnapshot: null,
+      metricType: 'duration',
+      order: 1,
+    });
+    const set = await workouts.addSet({
+      workoutExerciseId: exercise.id,
+      setIndex: 1,
+      targetWeight: 0,
+      targetReps: 0,
+      targetDurationSec: 60,
+      actualWeight: 0,
+      actualReps: 0,
+      actualDurationSec: 60,
+    });
+
+    await workouts.startExerciseTimer(set.id);
+    expect(await workouts.getSet(set.id)).toMatchObject({
+      exerciseStartedAt: expect.any(String),
+      restStartedAt: null,
+    });
+    await workouts.stopExerciseTimer(set.id, 42);
+    await workouts.updateExerciseNote(exercise.id, 'Harder on the left side');
+
+    expect(await workouts.getSet(set.id)).toMatchObject({
+      exerciseStartedAt: null,
+      actualDurationSec: 42,
+      restStartedAt: null,
+    });
+    expect((await workouts.listExercises(session.id))[0]?.noteSnapshot).toBe('Harder on the left side');
+    expect((await days.listExercises(day.id))[0]?.note).toBe('Harder on the left side');
+  });
+
+  it('updates editable values of a pending set', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    const workouts = new WorkoutRepository(db);
+    const session = await workouts.createSession({
+      sourcePlanId: null,
+      sourceTrainingDayId: null,
+      planNameSnapshot: 'Plan',
+      trainingDayNameSnapshot: 'Day',
+    });
+    const exercise = await workouts.addExercise({
+      workoutSessionId: session.id,
+      sourcePlannedExerciseId: null,
+      nameSnapshot: 'Plank',
+      noteSnapshot: null,
+      metricType: 'duration',
+      order: 1,
+    });
+    const set = await workouts.addSet({
+      workoutExerciseId: exercise.id,
+      setIndex: 2,
+      targetWeight: 0,
+      targetReps: 0,
+      targetDurationSec: 40,
+      actualWeight: 0,
+      actualReps: 0,
+      actualDurationSec: 40,
+    });
+
+    await workouts.updatePendingSetValues(set.id, {
+      actualWeight: 0,
+      actualReps: 0,
+      actualDurationSec: 60,
+      targetDurationSec: 60,
+    });
+
+    await expect(workouts.getSet(set.id)).resolves.toMatchObject({
+      completed: false,
+      targetDurationSec: 60,
+      actualDurationSec: 60,
+    });
+  });
+
   it('lists workout sessions only for the active plan', async () => {
     const db = new MemoryDatabase();
     await runMigrations(db);

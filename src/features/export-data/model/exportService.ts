@@ -62,9 +62,11 @@ export class ExportService {
           order: day.order,
           exercises: (await daysRepo.listExercises(day.id)).map(exercise => ({
             name: exercise.name,
+            metricType: exercise.metricType,
             targetSets: exercise.targetSets,
             targetReps: exercise.targetReps,
             targetWeight: exercise.targetWeight,
+            targetDurationSec: exercise.targetDurationSec,
             note: exercise.note,
             order: exercise.order,
           })),
@@ -94,7 +96,7 @@ export class ExportService {
       schemaVersion: 1,
       type: 'full-backup',
       exportedAt: nowIso(),
-      app: { name: 'Workout Logger', version: '1.0.0' },
+      app: { name: 'Workout Logger', version: '1.1.0' },
       payload: {
         settings: {
           weightUnit: settings.weightUnit,
@@ -154,13 +156,18 @@ export class ExportService {
               (await workoutRepo.listExercises(session.id)).map(async exercise => ({
                 id: exercise.id,
                 name: exercise.nameSnapshot,
+                note: exercise.noteSnapshot,
+                metricType: exercise.metricType,
                 order: exercise.order,
                 sets: (await workoutRepo.listSets(exercise.id)).map(set => ({
                   index: set.setIndex,
                   targetWeight: set.targetWeight,
                   targetReps: set.targetReps,
+                  targetDurationSec: set.targetDurationSec,
                   actualWeight: set.actualWeight,
                   actualReps: set.actualReps,
+                  actualDurationSec: set.actualDurationSec,
+                  exerciseStartedAt: set.exerciseStartedAt,
                   completed: set.completed,
                   completedAt: set.completedAt,
                   restStartedAt: set.restStartedAt,
@@ -203,6 +210,9 @@ const buildExerciseProgress = (
 
   sessions.forEach(session => {
     session.exercises.forEach(exercise => {
+      if (exercise.metricType === 'duration') {
+        return;
+      }
       const completedSets = exercise.sets.filter(set => set.completed);
       const performance = selectExercisePerformance(completedSets);
 

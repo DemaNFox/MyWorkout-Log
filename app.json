@@ -2,7 +2,7 @@
   "expo": {
     "name": "Workout Logger",
     "slug": "workout-logger",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "platforms": [
@@ -10,12 +10,13 @@
     ],
     "android": {
       "package": "com.workoutlogger.mvp",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#f4f7f6"
       }
     },
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "plugins": [
       "expo-sqlite",
       "expo-asset",

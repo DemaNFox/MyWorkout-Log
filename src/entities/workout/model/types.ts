@@ -1,4 +1,4 @@
-import type { WorkoutStatus } from '@shared/types/domain';
+import type { ExerciseMetricType, WorkoutStatus } from '@shared/types/domain';
 
 export interface WorkoutSession {
   id: string;
@@ -20,6 +20,7 @@ export interface WorkoutExercise {
   sourcePlannedExerciseId: string | null;
   nameSnapshot: string;
   noteSnapshot: string | null;
+  metricType: ExerciseMetricType;
   order: number;
   createdAt: string;
   updatedAt: string;
@@ -31,8 +32,11 @@ export interface WorkoutSet {
   setIndex: number;
   targetWeight: number | null;
   targetReps: number | null;
+  targetDurationSec: number | null;
   actualWeight: number;
   actualReps: number;
+  actualDurationSec: number | null;
+  exerciseStartedAt: string | null;
   completed: boolean;
   completedAt: string | null;
   restStartedAt: string | null;

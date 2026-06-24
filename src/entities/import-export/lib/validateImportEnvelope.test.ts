@@ -106,4 +106,31 @@ describe('parseImportEnvelope', () => {
       ),
     ).toThrow(AppError);
   });
+
+  it('accepts a timed exercise and rejects a missing duration', () => {
+    const createEnvelope = (targetDurationSec?: number) => ({
+      schemaVersion: 1,
+      type: 'workout-plan',
+      exportedAt: '2026-06-24T12:00:00.000Z',
+      payload: {
+        name: 'Core',
+        days: [{
+          name: 'Day',
+          order: 1,
+          exercises: [{
+            name: 'Plank',
+            metricType: 'duration',
+            targetSets: 3,
+            targetReps: 0,
+            targetWeight: 0,
+            ...(targetDurationSec === undefined ? {} : { targetDurationSec }),
+            order: 1,
+          }],
+        }],
+      },
+    });
+
+    expect(parseImportEnvelope(JSON.stringify(createEnvelope(60))).type).toBe('workout-plan');
+    expect(() => parseImportEnvelope(JSON.stringify(createEnvelope()))).toThrow(AppError);
+  });
 });

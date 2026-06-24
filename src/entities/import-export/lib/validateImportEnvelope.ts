@@ -14,6 +14,9 @@ const isNonNegativeNumber = (value: unknown): value is number =>
 const isNullableString = (value: unknown): value is string | null =>
   value === null || typeof value === 'string';
 
+const isExerciseMetricType = (value: unknown): value is 'reps' | 'duration' =>
+  value === 'reps' || value === 'duration';
+
 const validatePlanPayload = (payload: unknown): payload is WorkoutPlanPayload => {
   if (!isRecord(payload) || !isNonEmptyString(payload.name) || !Array.isArray(payload.days)) {
     return false;
@@ -26,12 +29,18 @@ const validatePlanPayload = (payload: unknown): payload is WorkoutPlanPayload =>
       if (!isRecord(exercise)) {
         return false;
       }
+      const metricType = 'metricType' in exercise ? exercise.metricType : 'reps';
+      const validDuration =
+        metricType !== 'duration' ||
+        (isNonNegativeNumber(exercise.targetDurationSec) && exercise.targetDurationSec > 0);
       return (
         isNonEmptyString(exercise.name) &&
+        isExerciseMetricType(metricType) &&
         isNonNegativeNumber(exercise.targetSets) &&
         exercise.targetSets > 0 &&
         isNonNegativeNumber(exercise.targetReps) &&
         isNonNegativeNumber(exercise.targetWeight) &&
+        validDuration &&
         (!('note' in exercise) || isNullableString(exercise.note)) &&
         isNonNegativeNumber(exercise.order)
       );

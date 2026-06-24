@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { MaterialIcons } from '@expo/vector-icons';
 
 import type { RootStackParamList } from '@app/navigation/types';
 import { useDatabase } from '@app/providers/DatabaseProvider';
@@ -14,6 +15,7 @@ import { EmptyState } from '@shared/ui/EmptyState';
 import { Screen } from '@shared/ui/Screen';
 import { TextField } from '@shared/ui/TextField';
 import { useThemeColors } from '@shared/ui/theme';
+import type { ExerciseMetricType } from '@shared/types/domain';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PlanDetails'>;
 
@@ -25,9 +27,24 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
   const [exercisesByDay, setExercisesByDay] = useState<Record<string, PlannedExercise[]>>({});
   const [dayName, setDayName] = useState('');
   const [exerciseName, setExerciseName] = useState('');
+  const [metricType, setMetricType] = useState<ExerciseMetricType>('reps');
   const [sets, setSets] = useState('3');
   const [reps, setReps] = useState('8');
   const [weight, setWeight] = useState('0');
+  const [exerciseNote, setExerciseNote] = useState('');
+  const [durationMinutes, setDurationMinutes] = useState('1');
+  const [durationSeconds, setDurationSeconds] = useState('0');
+  const [exerciseEdit, setExerciseEdit] = useState<{
+    id: string;
+    name: string;
+    metricType: ExerciseMetricType;
+    sets: string;
+    reps: string;
+    weight: string;
+    durationMinutes: string;
+    durationSeconds: string;
+    note: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     const planRepo = new PlanRepository(db);
@@ -58,14 +75,19 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
 
   const addExercise = async (trainingDayId: string) => {
     try {
+      const targetDurationSec = Number(durationMinutes || 0) * 60 + Number(durationSeconds || 0);
       await new TrainingDayRepository(db).addExercise({
         trainingDayId,
         name: exerciseName,
+        metricType,
         targetSets: Number(sets),
-        targetReps: Number(reps),
-        targetWeight: Number(weight),
+        targetReps: metricType === 'reps' ? Number(reps) : 0,
+        targetWeight: metricType === 'reps' ? Number(weight) : 0,
+        targetDurationSec: metricType === 'duration' ? targetDurationSec : null,
+        note: exerciseNote,
       });
       setExerciseName('');
+      setExerciseNote('');
       await load();
     } catch (error) {
       Alert.alert('Cannot add exercise', error instanceof Error ? error.message : 'Unknown error');
@@ -103,6 +125,45 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
     ]);
   };
 
+  const openExerciseEdit = (exercise: PlannedExercise) => {
+    const durationSec = exercise.targetDurationSec ?? 0;
+    setExerciseEdit({
+      id: exercise.id,
+      name: exercise.name,
+      metricType: exercise.metricType,
+      sets: String(exercise.targetSets),
+      reps: String(exercise.targetReps),
+      weight: String(exercise.targetWeight),
+      durationMinutes: String(Math.floor(durationSec / 60)),
+      durationSeconds: String(durationSec % 60),
+      note: exercise.note ?? '',
+    });
+  };
+
+  const saveExerciseEdit = async () => {
+    if (!exerciseEdit) {
+      return;
+    }
+    try {
+      const durationSec =
+        Number(exerciseEdit.durationMinutes || 0) * 60 + Number(exerciseEdit.durationSeconds || 0);
+      await new TrainingDayRepository(db).updateExercise({
+        id: exerciseEdit.id,
+        name: exerciseEdit.name,
+        metricType: exerciseEdit.metricType,
+        targetSets: Number(exerciseEdit.sets),
+        targetReps: exerciseEdit.metricType === 'reps' ? Number(exerciseEdit.reps) : 0,
+        targetWeight: exerciseEdit.metricType === 'reps' ? Number(exerciseEdit.weight) : 0,
+        targetDurationSec: exerciseEdit.metricType === 'duration' ? durationSec : null,
+        note: exerciseEdit.note,
+      });
+      setExerciseEdit(null);
+      await load();
+    } catch (error) {
+      Alert.alert('Cannot update exercise', error instanceof Error ? error.message : 'Unknown error');
+    }
+  };
+
   if (!plan) {
     return (
       <Screen title="Plan">
@@ -130,26 +191,78 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
           {(exercisesByDay[day.id] ?? []).map(exercise => (
             <View key={exercise.id} style={{ gap: 8 }}>
               <Text style={{ color: colors.text }}>
-                {exercise.order}. {exercise.name} - {exercise.targetSets} x {exercise.targetReps} x{' '}
-                {exercise.targetWeight}
+                {exercise.order}. {exercise.name} — {exercise.targetSets} ×{' '}
+                {exercise.metricType === 'duration'
+                  ? formatExerciseDuration(exercise.targetDurationSec ?? 0)
+                  : `${exercise.targetReps} × ${exercise.targetWeight}`}
               </Text>
-              <Button onPress={() => confirmDeleteExercise(exercise)} variant="secondary">
-                Delete exercise
-              </Button>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <ExerciseIconButton
+                  icon="edit"
+                  label={`Edit ${exercise.name}`}
+                  onPress={() => openExerciseEdit(exercise)}
+                />
+                <ExerciseIconButton
+                  danger
+                  icon="delete"
+                  label={`Delete ${exercise.name}`}
+                  onPress={() => confirmDeleteExercise(exercise)}
+                />
+              </View>
             </View>
           ))}
           <View style={{ gap: 8 }}>
             <TextField label="Exercise" onChangeText={setExerciseName} value={exerciseName} />
+            <TextField label="Comment" onChangeText={setExerciseNote} value={exerciseNote} />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Button
+                  onPress={() => setMetricType('reps')}
+                  variant={metricType === 'reps' ? 'primary' : 'secondary'}>
+                  Reps
+                </Button>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button
+                  onPress={() => setMetricType('duration')}
+                  variant={metricType === 'duration' ? 'primary' : 'secondary'}>
+                  Time
+                </Button>
+              </View>
+            </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <TextField keyboardType="numeric" label="Sets" onChangeText={setSets} value={sets} />
               </View>
-              <View style={{ flex: 1 }}>
-                <TextField keyboardType="numeric" label="Reps" onChangeText={setReps} value={reps} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <TextField keyboardType="numeric" label="Weight" onChangeText={setWeight} value={weight} />
-              </View>
+              {metricType === 'reps' ? (
+                <>
+                  <View style={{ flex: 1 }}>
+                    <TextField keyboardType="numeric" label="Reps" onChangeText={setReps} value={reps} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextField keyboardType="numeric" label="Weight" onChangeText={setWeight} value={weight} />
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={{ flex: 1 }}>
+                    <TextField
+                      keyboardType="numeric"
+                      label="Minutes"
+                      onChangeText={setDurationMinutes}
+                      value={durationMinutes}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextField
+                      keyboardType="numeric"
+                      label="Seconds"
+                      onChangeText={setDurationSeconds}
+                      value={durationSeconds}
+                    />
+                  </View>
+                </>
+              )}
             </View>
             <Button disabled={!exerciseName.trim()} onPress={() => addExercise(day.id)}>
               Add exercise
@@ -157,6 +270,135 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
           </View>
         </Card>
       ))}
+      <Modal animationType="fade" transparent visible={exerciseEdit !== null}>
+        <View style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.42)' }}>
+          <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 12, padding: 16 }}>
+            <Text style={{ color: colors.text, fontSize: 20, fontWeight: '800' }}>Edit exercise</Text>
+            <TextField
+              label="Exercise"
+              onChangeText={value => setExerciseEdit(current => current ? { ...current, name: value } : current)}
+              value={exerciseEdit?.name ?? ''}
+            />
+            <TextField
+              label="Comment"
+              onChangeText={value => setExerciseEdit(current => current ? { ...current, note: value } : current)}
+              value={exerciseEdit?.note ?? ''}
+            />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Button
+                  onPress={() => setExerciseEdit(current => current ? { ...current, metricType: 'reps' } : current)}
+                  variant={exerciseEdit?.metricType === 'reps' ? 'primary' : 'secondary'}>
+                  Reps
+                </Button>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button
+                  onPress={() => setExerciseEdit(current => current ? { ...current, metricType: 'duration' } : current)}
+                  variant={exerciseEdit?.metricType === 'duration' ? 'primary' : 'secondary'}>
+                  Time
+                </Button>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <TextField
+                  keyboardType="numeric"
+                  label="Sets"
+                  onChangeText={value => setExerciseEdit(current => current ? { ...current, sets: value } : current)}
+                  value={exerciseEdit?.sets ?? ''}
+                />
+              </View>
+              {exerciseEdit?.metricType === 'duration' ? (
+                <>
+                  <View style={{ flex: 1 }}>
+                    <TextField
+                      keyboardType="numeric"
+                      label="Minutes"
+                      onChangeText={value => setExerciseEdit(current => current ? { ...current, durationMinutes: value } : current)}
+                      value={exerciseEdit.durationMinutes}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextField
+                      keyboardType="numeric"
+                      label="Seconds"
+                      onChangeText={value => setExerciseEdit(current => current ? { ...current, durationSeconds: value } : current)}
+                      value={exerciseEdit.durationSeconds}
+                    />
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={{ flex: 1 }}>
+                    <TextField
+                      keyboardType="numeric"
+                      label="Reps"
+                      onChangeText={value => setExerciseEdit(current => current ? { ...current, reps: value } : current)}
+                      value={exerciseEdit?.reps ?? ''}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextField
+                      keyboardType="numeric"
+                      label="Weight"
+                      onChangeText={value => setExerciseEdit(current => current ? { ...current, weight: value } : current)}
+                      value={exerciseEdit?.weight ?? ''}
+                    />
+                  </View>
+                </>
+              )}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Button onPress={() => setExerciseEdit(null)} variant="secondary">Cancel</Button>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button onPress={() => void saveExerciseEdit()}>Save</Button>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
+};
+
+const ExerciseIconButton = ({
+  danger = false,
+  icon,
+  label,
+  onPress,
+}: {
+  danger?: boolean;
+  icon: 'delete' | 'edit';
+  label: string;
+  onPress: () => void;
+}) => {
+  const colors = useThemeColors();
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => ({
+        alignItems: 'center',
+        backgroundColor: danger ? colors.danger : colors.secondarySurface,
+        borderColor: danger ? colors.danger : colors.secondaryBorder,
+        borderRadius: 8,
+        borderWidth: 1,
+        height: 42,
+        justifyContent: 'center',
+        opacity: pressed ? 0.8 : 1,
+        width: 48,
+      })}>
+      <MaterialIcons color={danger ? colors.primaryText : colors.secondaryText} name={icon} size={21} />
+    </Pressable>
+  );
+};
+
+const formatExerciseDuration = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return `${minutes}:${rest.toString().padStart(2, '0')}`;
 };

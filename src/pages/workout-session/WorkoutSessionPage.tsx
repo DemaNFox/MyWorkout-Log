@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import type { RootStackParamList } from '@app/navigation/types';
 import { useDatabase } from '@app/providers/DatabaseProvider';
-import type { WorkoutDetails, WorkoutSet } from '@entities/workout/model/types';
+import type { WorkoutDetails, WorkoutExercise, WorkoutSet } from '@entities/workout/model/types';
 import { WorkoutRepository } from '@entities/workout/repository/workoutRepository';
 import { RestTimer } from '@features/rest-timer/ui/RestTimer';
 import { formatDuration } from '@shared/lib/date';
@@ -26,12 +26,24 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   const colors = useThemeColors();
   const layout = useLayoutMetrics();
   const scrollRef = useRef<ScrollView | null>(null);
+  const exerciseOffsetsRef = useRef(new Map<string, number>());
+  const restorePendingRef = useRef(true);
   const [details, setDetails] = useState<WorkoutDetails | null>(null);
-  const [edits, setEdits] = useState<Record<string, { weight: string; reps: string }>>({});
-  const [setEdit, setSetEdit] = useState<{
-    setId: string;
+  const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
+  const [edits, setEdits] = useState<Record<string, {
     weight: string;
     reps: string;
+    durationMinutes: string;
+    durationSeconds: string;
+    durationInput: string;
+  }>>({});
+  const [setEdit, setSetEdit] = useState<{
+    setId: string;
+    metricType: WorkoutExercise['metricType'];
+    weight: string;
+    reps: string;
+    durationMinutes: string;
+    durationSeconds: string;
     restMinutes: string;
     restSeconds: string;
     canEditRest: boolean;
@@ -41,22 +53,37 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   const [activeRestStartedAt, setActiveRestStartedAt] = useState<string | null>(null);
   const [activeRestTargetSec, setActiveRestTargetSec] = useState<number | null>(null);
   const [restTimerStartKey, setRestTimerStartKey] = useState(0);
+  const [activeExerciseSetId, setActiveExerciseSetId] = useState<string | null>(null);
+  const [exerciseElapsedSec, setExerciseElapsedSec] = useState(0);
 
   const load = useCallback(async () => {
     const nextDetails = await new WorkoutRepository(db).getDetails(route.params.workoutId);
     setDetails(nextDetails);
     if (nextDetails) {
-      const nextEdits: Record<string, { weight: string; reps: string }> = {};
+      const nextEdits: typeof edits = {};
       nextDetails.exercises.forEach(exercise => {
         exercise.sets.forEach(set => {
-          nextEdits[set.id] = { weight: String(set.actualWeight), reps: String(set.actualReps) };
+          const durationSec = set.actualDurationSec ?? set.targetDurationSec ?? 0;
+          nextEdits[set.id] = {
+            weight: String(set.actualWeight),
+            reps: String(set.actualReps),
+            durationMinutes: String(Math.floor(durationSec / 60)),
+            durationSeconds: String(durationSec % 60),
+            durationInput: formatDurationInput(durationSec),
+          };
         });
       });
       setEdits(nextEdits);
+      setExerciseNotes(
+        Object.fromEntries(nextDetails.exercises.map(exercise => [exercise.id, exercise.noteSnapshot ?? ''])),
+      );
       const activeRestSet = findActiveRestSet(nextDetails);
       setActiveRestSetId(activeRestSet?.id ?? null);
       setActiveRestStartedAt(activeRestSet?.restStartedAt ?? null);
       setActiveRestTargetSec(activeRestSet?.restTargetSec ?? null);
+      const activeExerciseSet = findActiveExerciseSet(nextDetails);
+      setActiveExerciseSetId(activeExerciseSet?.id ?? null);
+      setExerciseElapsedSec(getExerciseElapsedSec(activeExerciseSet?.exerciseStartedAt ?? null));
     }
   }, [db, route.params.workoutId]);
 
@@ -65,27 +92,71 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   }, [load]);
 
   useEffect(() => {
-    const offset = workoutScrollOffsets.get(route.params.workoutId);
-    if (offset === undefined) {
-      return;
+    restorePendingRef.current = true;
+    exerciseOffsetsRef.current.clear();
+  }, [route.params.workoutId]);
+
+  useEffect(() => {
+    if (!activeExerciseSetId) {
+      return undefined;
     }
-    const timeoutId = setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: offset, animated: false });
-    }, 0);
-    return () => clearTimeout(timeoutId);
-  }, [details, route.params.workoutId]);
+    const activeSet = details?.exercises
+      .flatMap(exercise => exercise.sets)
+      .find(set => set.id === activeExerciseSetId);
+    if (!activeSet?.exerciseStartedAt) {
+      return undefined;
+    }
+    const updateElapsed = () => {
+      setExerciseElapsedSec(getExerciseElapsedSec(activeSet.exerciseStartedAt));
+    };
+    updateElapsed();
+    const intervalId = setInterval(updateElapsed, 1000);
+    return () => clearInterval(intervalId);
+  }, [activeExerciseSetId, details]);
 
   const completeSet = async (setId: string) => {
     const edit = edits[setId];
-    if (!edit) {
+    const exercise = details?.exercises.find(candidate => candidate.sets.some(set => set.id === setId));
+    if (!edit || !exercise) {
       return;
     }
     try {
+      const enteredDurationSec = parseDurationInput(edit.durationInput);
+      const completedDurationSec =
+        exercise.metricType === 'duration' && activeExerciseSetId === setId
+          ? exerciseElapsedSec
+          : enteredDurationSec;
+      if (exercise.metricType === 'duration' && (completedDurationSec === null || completedDurationSec <= 0)) {
+        Alert.alert('Cannot complete set', 'Duration must be greater than zero.');
+        return;
+      }
       const repository = new WorkoutRepository(db);
+      if (activeExerciseSetId === setId) {
+        await repository.stopExerciseTimer(setId, exerciseElapsedSec);
+      }
       if (activeRestSetId && activeRestSetId !== setId) {
         await repository.finishRest(activeRestSetId);
       }
-      await repository.completeSet(setId, Number(edit.weight), Number(edit.reps));
+      await repository.completeSet(
+        setId,
+        exercise.metricType === 'reps' ? Number(edit.weight) : 0,
+        exercise.metricType === 'reps' ? Number(edit.reps) : 0,
+        exercise.metricType === 'duration' ? completedDurationSec : null,
+      );
+      const currentSetIndex = exercise.sets.findIndex(set => set.id === setId);
+      const nextSet = exercise.sets
+        .slice(currentSetIndex + 1)
+        .find(set => !set.completed);
+      if (nextSet) {
+        await repository.updatePendingSetValues(nextSet.id, {
+          actualWeight: exercise.metricType === 'reps' ? Number(edit.weight) : 0,
+          actualReps: exercise.metricType === 'reps' ? Number(edit.reps) : 0,
+          actualDurationSec: exercise.metricType === 'duration' ? enteredDurationSec : null,
+          targetDurationSec: exercise.metricType === 'duration' ? enteredDurationSec : null,
+        });
+      }
+      setActiveExerciseSetId(null);
+      setExerciseElapsedSec(0);
       if (hasNextWorkoutStep(details, setId)) {
         setActiveRestSetId(setId);
         setActiveRestRemainingSec(null);
@@ -104,12 +175,16 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
     }
   };
 
-  const openSetEdit = (set: WorkoutSet, canEditRest: boolean) => {
+  const openSetEdit = (exercise: WorkoutExercise, set: WorkoutSet, canEditRest: boolean) => {
     const restSec = getEditableRestSec(set, activeRestTargetSec);
+    const durationSec = set.actualDurationSec ?? set.targetDurationSec ?? 0;
     setSetEdit({
       setId: set.id,
+      metricType: exercise.metricType,
       weight: String(set.actualWeight),
       reps: String(set.actualReps),
+      durationMinutes: String(Math.floor(durationSec / 60)),
+      durationSeconds: String(durationSec % 60),
       restMinutes: String(Math.floor(restSec / 60)),
       restSeconds: String(restSec % 60),
       canEditRest,
@@ -123,9 +198,14 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
     }
     const weight = Number(edit.weight);
     const reps = Number(edit.reps);
+    const durationSec = getSecondsFromParts(edit.durationMinutes, edit.durationSeconds);
     const restSec = getSecondsFromParts(edit.restMinutes, edit.restSeconds);
-    if (!Number.isFinite(weight) || weight < 0 || !Number.isFinite(reps) || reps < 0) {
+    if (edit.metricType === 'reps' && (!Number.isFinite(weight) || weight < 0 || !Number.isFinite(reps) || reps < 0)) {
       Alert.alert('Cannot update set', 'Weight and reps must be non-negative numbers.');
+      return;
+    }
+    if (edit.metricType === 'duration' && (durationSec === null || durationSec <= 0)) {
+      Alert.alert('Cannot update set', 'Duration must be greater than zero.');
       return;
     }
     if (edit.canEditRest && restSec === null) {
@@ -135,7 +215,12 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
     try {
       const repository = new WorkoutRepository(db);
       const currentSet = details?.exercises.flatMap(exercise => exercise.sets).find(set => set.id === edit.setId);
-      await repository.updateCompletedSetResult(edit.setId, weight, reps);
+      await repository.updateCompletedSetResult(
+        edit.setId,
+        edit.metricType === 'reps' ? weight : 0,
+        edit.metricType === 'reps' ? reps : 0,
+        edit.metricType === 'duration' ? durationSec : null,
+      );
       if (edit.canEditRest && restSec !== null) {
         if (activeRestSetId === edit.setId && currentSet?.restStartedAt && !currentSet.restFinishedAt) {
           await repository.updateRestTarget(edit.setId, restSec);
@@ -171,6 +256,71 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
       navigation.navigate('MainTabs');
     } catch (error) {
       Alert.alert('Cannot finish workout', error instanceof Error ? error.message : 'Unknown error');
+    }
+  };
+
+  const confirmCancelWorkout = () => {
+    Alert.alert(
+      'Cancel workout',
+      'Cancel this workout? Its sets and notes from this session will be deleted.',
+      [
+        { text: 'Keep workout', style: 'cancel' },
+        {
+          text: 'Cancel workout',
+          style: 'destructive',
+          onPress: () => {
+            stopTimerSound();
+            void new WorkoutRepository(db)
+              .deleteSession(route.params.workoutId)
+              .then(() => navigation.navigate('MainTabs'))
+              .catch(error => {
+                Alert.alert('Cannot cancel workout', error instanceof Error ? error.message : 'Unknown error');
+              });
+          },
+        },
+      ],
+    );
+  };
+
+  const saveExerciseNote = async (exerciseId: string) => {
+    try {
+      await new WorkoutRepository(db).updateExerciseNote(exerciseId, exerciseNotes[exerciseId] ?? '');
+      await load();
+    } catch (error) {
+      Alert.alert('Cannot save comment', error instanceof Error ? error.message : 'Unknown error');
+    }
+  };
+
+  const toggleExerciseTimer = async (set: WorkoutSet) => {
+    const repository = new WorkoutRepository(db);
+    try {
+      if (activeExerciseSetId === set.id) {
+        await repository.stopExerciseTimer(set.id, exerciseElapsedSec);
+        setActiveExerciseSetId(null);
+        setExerciseElapsedSec(0);
+        await load();
+        return;
+      }
+      if (activeExerciseSetId) {
+        await repository.stopExerciseTimer(activeExerciseSetId, exerciseElapsedSec);
+      }
+      const durationSec = parseDurationInput(edits[set.id]?.durationInput ?? '');
+      if (durationSec === null || durationSec <= 0) {
+        Alert.alert('Cannot start timer', 'Enter a duration greater than zero in mm:ss format.');
+        return;
+      }
+      await repository.updatePendingSetValues(set.id, {
+        actualWeight: 0,
+        actualReps: 0,
+        actualDurationSec: durationSec,
+        targetDurationSec: durationSec,
+      });
+      await repository.startExerciseTimer(set.id);
+      setActiveExerciseSetId(set.id);
+      setExerciseElapsedSec(0);
+      await load();
+    } catch (error) {
+      Alert.alert('Cannot start timer', error instanceof Error ? error.message : 'Unknown error');
     }
   };
 
@@ -218,6 +368,28 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
     workoutScrollOffsets.set(route.params.workoutId, event.nativeEvent.contentOffset.y);
   };
 
+  const handleExerciseLayout = (exerciseId: string, event: LayoutChangeEvent) => {
+    exerciseOffsetsRef.current.set(exerciseId, event.nativeEvent.layout.y);
+    restoreWorkoutPosition();
+  };
+
+  const restoreWorkoutPosition = () => {
+    if (!details || !restorePendingRef.current) {
+      return;
+    }
+    const savedOffset = workoutScrollOffsets.get(route.params.workoutId);
+    const currentExercise = details.exercises.find(exercise => exercise.sets.some(set => !set.completed));
+    const currentExerciseOffset = currentExercise ? exerciseOffsetsRef.current.get(currentExercise.id) : undefined;
+    const targetOffset = currentExerciseOffset ?? savedOffset;
+    if (targetOffset === undefined) {
+      return;
+    }
+    restorePendingRef.current = false;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, targetOffset - spacing.md), animated: false });
+    });
+  };
+
   if (!details) {
     return <Screen title="Workout"><EmptyState text="Workout not found." /></Screen>;
   }
@@ -226,6 +398,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView
         contentContainerStyle={{ padding: layout.screenPadding, paddingBottom: 144 }}
+        onContentSizeChange={restoreWorkoutPosition}
         onScroll={handleScroll}
         ref={scrollRef}
         scrollEventThrottle={250}>
@@ -234,15 +407,17 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
         </Text>
         <View style={{ gap: spacing.lg }}>
           {details.exercises.map(exercise => (
-            <Card key={exercise.id}>
+            <View key={exercise.id} onLayout={event => handleExerciseLayout(exercise.id, event)}>
+            <Card>
               <Text style={{ color: colors.text, fontSize: 20, fontWeight: '800' }}>{exercise.nameSnapshot}</Text>
               {exercise.sets.map(set => {
                 const restLabel = getRestLabel(details, set.id);
-                const setEditable = !set.completed;
+                const setEditable = !set.completed && activeExerciseSetId !== set.id;
 
                 return (
                 <View key={set.id} style={{ gap: 8 }}>
                   <Text style={{ color: colors.muted }}>Set {set.setIndex}</Text>
+                  {exercise.metricType === 'reps' ? (
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <View style={{ flex: 1 }}>
                       <TextField
@@ -252,7 +427,10 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                         onChangeText={value =>
                           setEdits(current => ({
                             ...current,
-                            [set.id]: { ...(current[set.id] ?? { reps: '0' }), weight: value },
+                            [set.id]: {
+                              ...(current[set.id] ?? emptySetEdit()),
+                              weight: value,
+                            },
                           }))
                         }
                         value={edits[set.id]?.weight ?? ''}
@@ -266,29 +444,84 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                         onChangeText={value =>
                           setEdits(current => ({
                             ...current,
-                            [set.id]: { ...(current[set.id] ?? { weight: '0' }), reps: value },
+                            [set.id]: {
+                              ...(current[set.id] ?? emptySetEdit()),
+                              reps: value,
+                            },
                           }))
                         }
                         value={edits[set.id]?.reps ?? ''}
                       />
                     </View>
                   </View>
+                  ) : (
+                    <TextField
+                      editable={setEditable}
+                      label="Time (mm:ss)"
+                      onChangeText={value =>
+                        setEdits(current => ({
+                          ...current,
+                          [set.id]: {
+                            ...(current[set.id] ?? emptySetEdit()),
+                            durationInput: sanitizeDurationInput(value),
+                          },
+                        }))
+                      }
+                      value={edits[set.id]?.durationInput ?? ''}
+                    />
+                  )}
                   {set.completed ? (
                     <CompletedSetSummary
                       activeRemainingSec={activeRestSetId === set.id ? activeRestRemainingSec : null}
-                      onEdit={() => openSetEdit(set, restLabel !== null)}
+                      exercise={exercise}
+                      onEdit={() => openSetEdit(exercise, set, restLabel !== null)}
                       restLabel={restLabel}
                       set={set}
                     />
                   ) : (
-                    <Button onPress={() => completeSet(set.id)}>Complete set</Button>
+                    exercise.metricType === 'duration' ? (
+                      <>
+                        <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800' }}>
+                          Exercise timer: {formatDuration(activeExerciseSetId === set.id ? exerciseElapsedSec : set.actualDurationSec)}
+                        </Text>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <View style={{ flex: 1 }}>
+                            <Button onPress={() => completeSet(set.id)}>Complete set</Button>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Button
+                              onPress={() => void toggleExerciseTimer(set)}
+                              variant={activeExerciseSetId === set.id ? 'secondary' : 'primary'}>
+                              {activeExerciseSetId === set.id ? 'Stop time' : 'Start time'}
+                            </Button>
+                          </View>
+                        </View>
+                      </>
+                    ) : (
+                      <Button onPress={() => completeSet(set.id)}>Complete set</Button>
+                    )
                   )}
                 </View>
                 );
               })}
+              <TextField
+                label="Exercise comment"
+                multiline
+                onBlur={() => void saveExerciseNote(exercise.id)}
+                onChangeText={value =>
+                  setExerciseNotes(current => ({ ...current, [exercise.id]: value }))
+                }
+                placeholder="Technique, setup, how it felt..."
+                value={exerciseNotes[exercise.id] ?? ''}
+              />
+              <Button onPress={() => void saveExerciseNote(exercise.id)} variant="secondary">
+                Save comment
+              </Button>
             </Card>
+            </View>
           ))}
           <Button onPress={finish}>Finish workout</Button>
+          <Button onPress={confirmCancelWorkout} variant="danger">Cancel workout</Button>
         </View>
       </ScrollView>
       <View
@@ -332,6 +565,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
               padding: 16,
             }}>
             <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Edit set</Text>
+            {setEdit?.metricType === 'reps' ? (
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <TextField
@@ -350,6 +584,24 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                 />
               </View>
             </View>
+            ) : (
+              <TextField
+                label="Time (mm:ss)"
+                onChangeText={value =>
+                  setSetEdit(current => {
+                    if (!current) {
+                      return current;
+                    }
+                    const parts = parseDurationParts(value);
+                    return { ...current, ...parts };
+                  })
+                }
+                value={formatDurationParts(
+                  setEdit?.durationMinutes ?? '0',
+                  setEdit?.durationSeconds ?? '0',
+                )}
+              />
+            )}
             {setEdit?.canEditRest ? (
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <View style={{ flex: 1 }}>
@@ -393,12 +645,13 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
 
 interface CompletedSetSummaryProps {
   activeRemainingSec: number | null;
+  exercise: WorkoutExercise;
   onEdit: () => void;
   restLabel: string | null;
   set: WorkoutSet;
 }
 
-const CompletedSetSummary = ({ activeRemainingSec, onEdit, restLabel, set }: CompletedSetSummaryProps) => {
+const CompletedSetSummary = ({ activeRemainingSec, exercise, onEdit, restLabel, set }: CompletedSetSummaryProps) => {
   const colors = useThemeColors();
   const running = Boolean(set.restStartedAt && !set.restFinishedAt);
   const displaySec = running ? activeRemainingSec : set.restDurationSec;
@@ -424,7 +677,9 @@ const CompletedSetSummary = ({ activeRemainingSec, onEdit, restLabel, set }: Com
         <View style={{ alignItems: 'center', flexDirection: 'row', gap: 8 }}>
           <Text style={{ color: colors.success, fontSize: 13, fontWeight: '900' }}>Completed</Text>
           <Text style={{ color: colors.text, fontSize: 15, fontWeight: '900' }}>
-            {set.actualWeight} x {set.actualReps}
+            {exercise.metricType === 'duration'
+              ? formatDuration(set.actualDurationSec)
+              : `${set.actualWeight} x ${set.actualReps}`}
           </Text>
         </View>
         <View style={{ alignItems: 'center', flexDirection: 'row', gap: 8 }}>
@@ -498,6 +753,49 @@ const getSecondsFromParts = (minutes: string, seconds: string): number | null =>
   return Math.round(parsedMinutes) * 60 + Math.round(parsedSeconds);
 };
 
+const emptySetEdit = () => ({
+  weight: '0',
+  reps: '0',
+  durationMinutes: '0',
+  durationSeconds: '0',
+  durationInput: '',
+});
+
+const parseDurationParts = (value: string): { durationMinutes: string; durationSeconds: string } => {
+  const sanitized = value.replace(/[^\d:]/g, '');
+  const [minutes = '0', seconds = '0'] = sanitized.split(':', 2);
+  return {
+    durationMinutes: minutes,
+    durationSeconds: seconds.slice(0, 2),
+  };
+};
+
+const formatDurationParts = (minutes: string, seconds: string): string =>
+  `${minutes || '0'}:${(seconds || '0').padStart(2, '0')}`;
+
+const sanitizeDurationInput = (value: string): string =>
+  value.replace(/[^\d:]/g, '').replace(/(:.*):/g, '$1');
+
+const parseDurationInput = (value: string): number | null => {
+  const sanitized = sanitizeDurationInput(value).trim();
+  if (!sanitized) {
+    return null;
+  }
+  const parts = sanitized.split(':');
+  if (parts.length > 2) {
+    return null;
+  }
+  const minutes = parts.length === 2 ? Number(parts[0] || 0) : 0;
+  const seconds = Number(parts.length === 2 ? parts[1] || 0 : parts[0]);
+  if (!Number.isInteger(minutes) || !Number.isInteger(seconds) || minutes < 0 || seconds < 0 || seconds >= 60) {
+    return null;
+  }
+  return minutes * 60 + seconds;
+};
+
+const formatDurationInput = (seconds: number): string =>
+  `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+
 const findActiveRestSet = (details: WorkoutDetails): WorkoutSet | null => {
   for (const exercise of details.exercises) {
     const set = exercise.sets.find(candidate => candidate.restStartedAt && !candidate.restFinishedAt);
@@ -506,6 +804,23 @@ const findActiveRestSet = (details: WorkoutDetails): WorkoutSet | null => {
     }
   }
   return null;
+};
+
+const findActiveExerciseSet = (details: WorkoutDetails): WorkoutSet | null => {
+  for (const exercise of details.exercises) {
+    const set = exercise.sets.find(candidate => candidate.exerciseStartedAt && !candidate.completed);
+    if (set) {
+      return set;
+    }
+  }
+  return null;
+};
+
+const getExerciseElapsedSec = (startedAt: string | null): number => {
+  if (!startedAt) {
+    return 0;
+  }
+  return Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
 };
 
 const getElapsedRestSec = (startedAt: string | null, targetSec: number | null, remainingSec: number | null): number | undefined => {
