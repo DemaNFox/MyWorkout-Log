@@ -8,7 +8,6 @@ import { SettingsRepository } from '@entities/settings/repository/settingsReposi
 import { formatDuration } from '@shared/lib/date';
 import {
   cancelScheduledTimerAlert,
-  playTimerAlert,
   requestTimerAlertPermission,
   scheduleTimerAlert,
   stopTimerSound,
@@ -173,10 +172,8 @@ export const RestTimer = ({
     }
     completedRef.current = true;
     setRunning(false);
-    cancelScheduledTimerAlert();
     setRemainingSec(0);
     onTickRef.current?.(0);
-    playTimerAlert(alertModeRef.current, soundUriRef.current, soundVolumeRef.current);
     if (alertModeRef.current !== 'silent') {
       setAlertVisible(true);
     }

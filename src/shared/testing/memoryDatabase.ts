@@ -139,6 +139,9 @@ export class MemoryDatabase implements Database {
     if (query.includes('order by sort_order')) {
       rows.sort((a, b) => Number(a.sort_order) - Number(b.sort_order));
     }
+    if (query.includes('order by set_index')) {
+      rows.sort((a, b) => Number(a.set_index) - Number(b.set_index));
+    }
     if (query.includes('order by started_at desc') || query.includes('order by created_at desc')) {
       rows.sort((a, b) => String(b.started_at ?? b.created_at).localeCompare(String(a.started_at ?? a.created_at)));
     }

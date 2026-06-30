@@ -108,6 +108,68 @@ describe('WorkoutRepository', () => {
     });
   });
 
+  it('prefills the next pending set from the latest completed set after completion and edits', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    const workouts = new WorkoutRepository(db);
+    const session = await workouts.createSession({
+      sourcePlanId: null,
+      sourceTrainingDayId: null,
+      planNameSnapshot: 'Plan',
+      trainingDayNameSnapshot: 'Day',
+    });
+    const exercise = await workouts.addExercise({
+      workoutSessionId: session.id,
+      sourcePlannedExerciseId: null,
+      nameSnapshot: 'Bench Press',
+      noteSnapshot: null,
+      order: 1,
+    });
+    const first = await workouts.addSet({
+      workoutExerciseId: exercise.id,
+      setIndex: 1,
+      targetWeight: 80,
+      targetReps: 5,
+      actualWeight: 80,
+      actualReps: 5,
+    });
+    const second = await workouts.addSet({
+      workoutExerciseId: exercise.id,
+      setIndex: 2,
+      targetWeight: 80,
+      targetReps: 5,
+      actualWeight: 0,
+      actualReps: 0,
+    });
+    const third = await workouts.addSet({
+      workoutExerciseId: exercise.id,
+      setIndex: 3,
+      targetWeight: 80,
+      targetReps: 5,
+      actualWeight: 0,
+      actualReps: 0,
+    });
+
+    await workouts.completeSet(first.id, 82.5, 6);
+    await expect(workouts.getSet(second.id)).resolves.toMatchObject({
+      actualWeight: 82.5,
+      actualReps: 6,
+    });
+
+    await workouts.completeSet(second.id, 85, 5);
+    await workouts.updateCompletedSetResult(second.id, 87.5, 4);
+    await expect(workouts.getSet(third.id)).resolves.toMatchObject({
+      actualWeight: 87.5,
+      actualReps: 4,
+    });
+
+    await workouts.updateCompletedSetResult(first.id, 70, 10);
+    await expect(workouts.getSet(third.id)).resolves.toMatchObject({
+      actualWeight: 87.5,
+      actualReps: 4,
+    });
+  });
+
   it('lists workout sessions only for the active plan', async () => {
     const db = new MemoryDatabase();
     await runMigrations(db);

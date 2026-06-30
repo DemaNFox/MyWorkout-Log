@@ -5,9 +5,11 @@ import { MaterialIcons } from '@expo/vector-icons';
 
 import type { RootStackParamList } from '@app/navigation/types';
 import { useDatabase } from '@app/providers/DatabaseProvider';
+import { getRestLabel } from '@entities/workout/lib/getRestLabel';
 import type { WorkoutDetails, WorkoutExercise, WorkoutSet } from '@entities/workout/model/types';
 import { WorkoutRepository } from '@entities/workout/repository/workoutRepository';
 import { RestTimer } from '@features/rest-timer/ui/RestTimer';
+import { ExerciseNoteField } from '@features/workout-note/ui/ExerciseNoteField';
 import { formatDuration } from '@shared/lib/date';
 import { stopTimerSound } from '@shared/lib/timerAlert';
 import { Button } from '@shared/ui/Button';
@@ -30,6 +32,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   const restorePendingRef = useRef(true);
   const [details, setDetails] = useState<WorkoutDetails | null>(null);
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
+  const [editingExerciseNoteId, setEditingExerciseNoteId] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, {
     weight: string;
     reps: string;
@@ -143,32 +146,13 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
         exercise.metricType === 'reps' ? Number(edit.reps) : 0,
         exercise.metricType === 'duration' ? completedDurationSec : null,
       );
-      const currentSetIndex = exercise.sets.findIndex(set => set.id === setId);
-      const nextSet = exercise.sets
-        .slice(currentSetIndex + 1)
-        .find(set => !set.completed);
-      if (nextSet) {
-        await repository.updatePendingSetValues(nextSet.id, {
-          actualWeight: exercise.metricType === 'reps' ? Number(edit.weight) : 0,
-          actualReps: exercise.metricType === 'reps' ? Number(edit.reps) : 0,
-          actualDurationSec: exercise.metricType === 'duration' ? enteredDurationSec : null,
-          targetDurationSec: exercise.metricType === 'duration' ? enteredDurationSec : null,
-        });
-      }
       setActiveExerciseSetId(null);
       setExerciseElapsedSec(0);
-      if (hasNextWorkoutStep(details, setId)) {
-        setActiveRestSetId(setId);
-        setActiveRestRemainingSec(null);
-        setActiveRestStartedAt(null);
-        setActiveRestTargetSec(null);
-        setRestTimerStartKey(current => current + 1);
-      } else {
-        setActiveRestSetId(null);
-        setActiveRestRemainingSec(null);
-        setActiveRestStartedAt(null);
-        setActiveRestTargetSec(null);
-      }
+      setActiveRestSetId(setId);
+      setActiveRestRemainingSec(null);
+      setActiveRestStartedAt(null);
+      setActiveRestTargetSec(null);
+      setRestTimerStartKey(current => current + 1);
       await load();
     } catch (error) {
       Alert.alert('Cannot complete set', error instanceof Error ? error.message : 'Unknown error');
@@ -285,6 +269,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   const saveExerciseNote = async (exerciseId: string) => {
     try {
       await new WorkoutRepository(db).updateExerciseNote(exerciseId, exerciseNotes[exerciseId] ?? '');
+      setEditingExerciseNoteId(null);
       await load();
     } catch (error) {
       Alert.alert('Cannot save comment', error instanceof Error ? error.message : 'Unknown error');
@@ -504,19 +489,22 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                 </View>
                 );
               })}
-              <TextField
-                label="Exercise comment"
-                multiline
-                onBlur={() => void saveExerciseNote(exercise.id)}
+              <ExerciseNoteField
+                dirty={isExerciseNoteDirty(exercise, exerciseNotes)}
+                editing={editingExerciseNoteId === exercise.id}
                 onChangeText={value =>
                   setExerciseNotes(current => ({ ...current, [exercise.id]: value }))
                 }
-                placeholder="Technique, setup, how it felt..."
+                onEdit={() => setEditingExerciseNoteId(exercise.id)}
+                onSave={() => {
+                  if (isExerciseNoteDirty(exercise, exerciseNotes)) {
+                    void saveExerciseNote(exercise.id);
+                  } else {
+                    setEditingExerciseNoteId(null);
+                  }
+                }}
                 value={exerciseNotes[exercise.id] ?? ''}
               />
-              <Button onPress={() => void saveExerciseNote(exercise.id)} variant="secondary">
-                Save comment
-              </Button>
             </Card>
             </View>
           ))}
@@ -708,28 +696,10 @@ const CompletedSetSummary = ({ activeRemainingSec, exercise, onEdit, restLabel, 
   );
 };
 
-const hasNextWorkoutStep = (details: WorkoutDetails | null, setId: string): boolean =>
-  getRestLabel(details, setId) !== null;
-
-const getRestLabel = (details: WorkoutDetails | null, setId: string): string | null => {
-  if (!details) {
-    return null;
-  }
-  for (const [exerciseIndex, exercise] of details.exercises.entries()) {
-    const setIndex = exercise.sets.findIndex(set => set.id === setId);
-    if (setIndex === -1) {
-      continue;
-    }
-    if (setIndex < exercise.sets.length - 1) {
-      return 'Rest';
-    }
-    if (exerciseIndex < details.exercises.length - 1) {
-      return 'Next exercise';
-    }
-    return null;
-  }
-  return null;
-};
+const isExerciseNoteDirty = (
+  exercise: WorkoutExercise,
+  exerciseNotes: Record<string, string>,
+): boolean => (exerciseNotes[exercise.id] ?? '').trim() !== (exercise.noteSnapshot ?? '').trim();
 
 const getEditableRestSec = (set: WorkoutSet, activeRestTargetSec: number | null): number => {
   if (set.restStartedAt && !set.restFinishedAt) {

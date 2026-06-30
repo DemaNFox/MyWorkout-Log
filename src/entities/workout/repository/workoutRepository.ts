@@ -254,10 +254,17 @@ export class WorkoutRepository {
     assertNonNegative(actualReps, 'Reps cannot be negative');
     assertNonNegative(actualDurationSec ?? 0, 'Duration cannot be negative');
     const timestamp = nowIso();
-    await this.db.execute(
-      'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, actual_duration_sec = ?, completed = ?, completed_at = ?, updated_at = ? WHERE id = ?',
-      [actualWeight, actualReps, actualDurationSec, 1, timestamp, timestamp, setId],
-    );
+    await this.db.transaction(async () => {
+      const set = await this.getSet(setId);
+      if (!set) {
+        throw new AppError('Workout set was not found', 'workout.setNotFound');
+      }
+      await this.db.execute(
+        'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, actual_duration_sec = ?, completed = ?, completed_at = ?, updated_at = ? WHERE id = ?',
+        [actualWeight, actualReps, actualDurationSec, 1, timestamp, timestamp, setId],
+      );
+      await this.prefillFirstPendingSet(set.workoutExerciseId);
+    });
   }
 
   async updateCompletedSetResult(
@@ -270,13 +277,17 @@ export class WorkoutRepository {
     assertNonNegative(actualReps, 'Reps cannot be negative');
     assertNonNegative(actualDurationSec ?? 0, 'Duration cannot be negative');
     const timestamp = nowIso();
-    const result = await this.db.execute(
-      'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, actual_duration_sec = ?, updated_at = ? WHERE id = ? AND completed = 1',
-      [actualWeight, actualReps, actualDurationSec, timestamp, setId],
-    );
-    if (result.changes === 0) {
-      throw new AppError('Completed set was not found', 'workout.completedSetNotFound');
-    }
+    await this.db.transaction(async () => {
+      const set = await this.getSet(setId);
+      if (!set?.completed) {
+        throw new AppError('Completed set was not found', 'workout.completedSetNotFound');
+      }
+      await this.db.execute(
+        'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, actual_duration_sec = ?, updated_at = ? WHERE id = ? AND completed = 1',
+        [actualWeight, actualReps, actualDurationSec, timestamp, setId],
+      );
+      await this.prefillFirstPendingSet(set.workoutExerciseId);
+    });
   }
 
   async updatePendingSetValues(
@@ -530,6 +541,26 @@ export class WorkoutRepository {
   async getSet(id: string): Promise<WorkoutSet | null> {
     const row = await this.db.getFirst<SetRow>('SELECT * FROM workout_sets WHERE id = ?', [id]);
     return row ? toSet(row) : null;
+  }
+
+  private async prefillFirstPendingSet(workoutExerciseId: string): Promise<void> {
+    const sets = await this.listSets(workoutExerciseId);
+    const pendingSet = sets.find(set => !set.completed);
+    if (!pendingSet) {
+      return;
+    }
+    const previousCompletedSet = sets
+      .filter(set => set.completed && set.setIndex < pendingSet.setIndex)
+      .slice(-1)[0];
+    if (!previousCompletedSet) {
+      return;
+    }
+    await this.updatePendingSetValues(pendingSet.id, {
+      actualWeight: previousCompletedSet.actualWeight,
+      actualReps: previousCompletedSet.actualReps,
+      actualDurationSec: previousCompletedSet.actualDurationSec,
+      targetDurationSec: previousCompletedSet.actualDurationSec,
+    });
   }
 
   private async deleteSessionRows(id: string): Promise<void> {

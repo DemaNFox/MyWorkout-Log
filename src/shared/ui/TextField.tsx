@@ -29,7 +29,7 @@ export const TextField = ({
 
   return (
     <View style={{ gap: spacing.xs }}>
-      <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700' }}>{label}</Text>
+      {label ? <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700' }}>{label}</Text> : null}
       <TextInput
         keyboardType={keyboardType}
         editable={editable}

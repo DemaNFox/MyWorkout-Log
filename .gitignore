@@ -6,7 +6,6 @@ dist/
 build/
 coverage/
 
-android/
 ios/
 
 *.log
