@@ -2,6 +2,7 @@ import type { Database } from '@shared/db/types';
 import { nowIso } from '@shared/lib/date';
 import { AppError, assertNonNegative } from '@shared/lib/errors';
 import { createId } from '@shared/lib/id';
+import { normalizeName } from '@shared/lib/normalizeName';
 import type { ExerciseMetricType } from '@shared/types/domain';
 
 import type { WorkoutDetails, WorkoutExercise, WorkoutSession, WorkoutSet } from '../model/types';
@@ -55,6 +56,17 @@ type SetRow = {
 
 type ActivePlanRow = {
   id: string;
+};
+
+type PlannedExerciseRow = {
+  id: string;
+  training_day_id: string;
+  name: string;
+};
+
+type TrainingDayRow = {
+  id: string;
+  plan_id: string;
 };
 
 const toSession = (row: SessionRow): WorkoutSession => ({
@@ -352,12 +364,49 @@ export class WorkoutRepository {
         [normalizedNote, timestamp, exerciseId],
       );
       if (exercise.source_planned_exercise_id) {
-        await this.db.execute(
-          'UPDATE planned_exercises SET note = ?, updated_at = ? WHERE id = ?',
-          [normalizedNote, timestamp, exercise.source_planned_exercise_id],
+        const relatedExerciseIds = await this.findRelatedPlannedExerciseIds(
+          exercise.source_planned_exercise_id,
         );
+        for (const relatedExerciseId of relatedExerciseIds) {
+          await this.db.execute(
+            'UPDATE planned_exercises SET note = ?, updated_at = ? WHERE id = ?',
+            [normalizedNote, timestamp, relatedExerciseId],
+          );
+        }
+        await this.updateOpenWorkoutNotes(relatedExerciseIds, normalizedNote, timestamp);
       }
     });
+  }
+
+  async getLatestCompletedExerciseSets(
+    planId: string,
+    sourcePlannedExerciseId: string,
+    exerciseName: string,
+  ): Promise<WorkoutSet[]> {
+    const sessions = await this.listSessionsForPlan(planId, 100);
+    const normalizedExerciseName = normalizeName(exerciseName);
+    const relatedExerciseIds = new Set(
+      await this.findRelatedPlannedExerciseIds(sourcePlannedExerciseId),
+    );
+    for (const session of sessions) {
+      if (session.status !== 'completed') {
+        continue;
+      }
+      const exercises = await this.listExercises(session.id);
+      const exercise = exercises.find(candidate =>
+        (candidate.sourcePlannedExerciseId !== null &&
+          relatedExerciseIds.has(candidate.sourcePlannedExerciseId)) ||
+        normalizeName(candidate.nameSnapshot) === normalizedExerciseName,
+      );
+      if (!exercise) {
+        continue;
+      }
+      const completedSets = (await this.listSets(exercise.id)).filter(set => set.completed);
+      if (completedSets.length > 0) {
+        return completedSets;
+      }
+    }
+    return [];
   }
 
   async startRest(setId: string, targetSec: number): Promise<void> {
@@ -601,5 +650,61 @@ export class WorkoutRepository {
       'active',
     ]);
     return row?.id ?? null;
+  }
+
+  private async findRelatedPlannedExerciseIds(sourcePlannedExerciseId: string): Promise<string[]> {
+    const source = await this.db.getFirst<PlannedExerciseRow>(
+      'SELECT * FROM planned_exercises WHERE id = ?',
+      [sourcePlannedExerciseId],
+    );
+    if (!source) {
+      return [];
+    }
+    const sourceDay = await this.db.getFirst<TrainingDayRow>(
+      'SELECT * FROM training_days WHERE id = ?',
+      [source.training_day_id],
+    );
+    if (!sourceDay) {
+      return [source.id];
+    }
+    const days = await this.db.getAll<TrainingDayRow>(
+      'SELECT * FROM training_days WHERE plan_id = ? ORDER BY sort_order ASC',
+      [sourceDay.plan_id],
+    );
+    const normalizedSourceName = normalizeName(source.name);
+    const relatedIds: string[] = [];
+    for (const day of days) {
+      const exercises = await this.db.getAll<PlannedExerciseRow>(
+        'SELECT * FROM planned_exercises WHERE training_day_id = ? ORDER BY sort_order ASC',
+        [day.id],
+      );
+      relatedIds.push(
+        ...exercises
+          .filter(exercise => normalizeName(exercise.name) === normalizedSourceName)
+          .map(exercise => exercise.id),
+      );
+    }
+    return relatedIds;
+  }
+
+  private async updateOpenWorkoutNotes(
+    sourcePlannedExerciseIds: string[],
+    note: string | null,
+    timestamp: string,
+  ): Promise<void> {
+    const relatedIds = new Set(sourcePlannedExerciseIds);
+    const sessions = await this.listSessions(500);
+    const openSessions = sessions.filter(session => session.status === 'planned' && !session.finishedAt);
+    for (const session of openSessions) {
+      const exercises = await this.listExercises(session.id);
+      for (const exercise of exercises) {
+        if (exercise.sourcePlannedExerciseId && relatedIds.has(exercise.sourcePlannedExerciseId)) {
+          await this.db.execute(
+            'UPDATE workout_exercises SET note_snapshot = ?, updated_at = ? WHERE id = ?',
+            [note, timestamp, exercise.id],
+          );
+        }
+      }
+    }
   }
 }

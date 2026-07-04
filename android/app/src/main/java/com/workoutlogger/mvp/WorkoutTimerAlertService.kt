@@ -36,6 +36,7 @@ class WorkoutTimerAlertService : Service() {
     val mode = intent?.getStringExtra(WorkoutTimerAlertReceiver.EXTRA_MODE) ?: MODE_VIBRATE
     val soundUri = intent?.getStringExtra(WorkoutTimerAlertReceiver.EXTRA_SOUND_URI)
     val volume = intent?.getDoubleExtra(WorkoutTimerAlertReceiver.EXTRA_VOLUME, 1.0) ?: 1.0
+    isAlertActive = true
     startForeground(NOTIFICATION_ID, createNotification())
     startAlert(mode, soundUri, volume)
     return START_NOT_STICKY
@@ -49,16 +50,14 @@ class WorkoutTimerAlertService : Service() {
   override fun onBind(intent: Intent?): IBinder? = null
 
   private fun createNotification(): Notification {
-    val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+    val alertIntent = Intent(this, WorkoutTimerAlertActivity::class.java).apply {
       addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-      addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-      putExtra(WorkoutTimerAlertReceiver.EXTRA_TIMER_ALERT, true)
     }
     val contentIntent = PendingIntent.getActivity(
       this,
       REQUEST_OPEN_APP,
-      launchIntent,
+      alertIntent,
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
     val stopIntent = Intent(this, WorkoutTimerAlertService::class.java).apply {
@@ -127,6 +126,7 @@ class WorkoutTimerAlertService : Service() {
   }
 
   private fun stopAlert() {
+    isAlertActive = false
     releaseAlert()
     stopForeground(STOP_FOREGROUND_REMOVE)
     stopSelf()
@@ -165,13 +165,16 @@ class WorkoutTimerAlertService : Service() {
   companion object {
     private const val ACTION_START = "com.workoutlogger.mvp.START_TIMER_ALERT_SERVICE"
     private const val ACTION_STOP = "com.workoutlogger.mvp.STOP_TIMER_ALERT_SERVICE"
-    private const val CHANNEL_ID = "workout_rest_timer_active_v2"
+    private const val CHANNEL_ID = "workout_rest_timer_active_v3"
     private const val MODE_SOUND = "sound"
     private const val MODE_SOUND_VIBRATE = "sound-vibrate"
     private const val MODE_VIBRATE = "vibrate"
     private const val NOTIFICATION_ID = 5101
     private const val REQUEST_OPEN_APP = 5102
     private const val REQUEST_STOP_ALERT = 5103
+    @Volatile
+    var isAlertActive: Boolean = false
+      private set
 
     fun start(context: Context, mode: String, soundUri: String?, volume: Double) {
       val intent = Intent(context, WorkoutTimerAlertService::class.java).apply {
@@ -184,6 +187,7 @@ class WorkoutTimerAlertService : Service() {
     }
 
     fun stop(context: Context) {
+      isAlertActive = false
       context.stopService(Intent(context, WorkoutTimerAlertService::class.java))
     }
   }

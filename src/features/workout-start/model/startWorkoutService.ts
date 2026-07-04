@@ -34,6 +34,11 @@ export class StartWorkoutService {
       trainingDayNameSnapshot: selectedDay.name,
     });
     for (const exercise of plannedExercises) {
+      const previousSets = await this.workouts.getLatestCompletedExerciseSets(
+        activePlan.id,
+        exercise.id,
+        exercise.name,
+      );
       const workoutExercise = await this.workouts.addExercise({
         workoutSessionId: session.id,
         sourcePlannedExerciseId: exercise.id,
@@ -43,15 +48,16 @@ export class StartWorkoutService {
         order: exercise.order,
       });
       for (let setIndex = 1; setIndex <= exercise.targetSets; setIndex += 1) {
+        const previousSet = previousSets[setIndex - 1] ?? previousSets[previousSets.length - 1];
         await this.workouts.addSet({
           workoutExerciseId: workoutExercise.id,
           setIndex,
           targetWeight: exercise.targetWeight,
           targetReps: exercise.targetReps,
           targetDurationSec: exercise.targetDurationSec,
-          actualWeight: exercise.targetWeight,
-          actualReps: exercise.targetReps,
-          actualDurationSec: exercise.targetDurationSec,
+          actualWeight: previousSet?.actualWeight ?? exercise.targetWeight,
+          actualReps: previousSet?.actualReps ?? exercise.targetReps,
+          actualDurationSec: previousSet?.actualDurationSec ?? exercise.targetDurationSec,
         });
       }
     }

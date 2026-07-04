@@ -8,4 +8,11 @@
   <style name="Theme.App.SplashScreen" parent="AppTheme">
     <item name="android:windowBackground">@drawable/ic_launcher_background</item>
   </style>
+  <style name="WorkoutTimerAlertTheme" parent="Theme.AppCompat.DayNight.Dialog.Alert">
+    <item name="android:windowNoTitle">true</item>
+    <item name="android:windowCloseOnTouchOutside">false</item>
+    <item name="android:backgroundDimAmount">0.72</item>
+    <item name="android:windowIsTranslucent">true</item>
+    <item name="android:windowBackground">@android:color/transparent</item>
+  </style>
 </resources>

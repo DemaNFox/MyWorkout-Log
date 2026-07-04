@@ -67,4 +67,47 @@ describe('StartWorkoutService', () => {
       actualDurationSec: 90,
     });
   });
+
+  it('prefills the same exercise in another day from its latest completed workout', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    const plans = new PlanRepository(db);
+    const trainingDays = new TrainingDayRepository(db);
+    const workouts = new WorkoutRepository(db);
+    const plan = await plans.create('Strength');
+    await plans.activate(plan.id);
+    const firstDay = await trainingDays.createDay(plan.id, 'Push A');
+    const secondDay = await trainingDays.createDay(plan.id, 'Push B');
+    await trainingDays.addExercise({
+      trainingDayId: firstDay.id,
+      name: 'Bench press',
+      targetSets: 1,
+      targetReps: 5,
+      targetWeight: 80,
+    });
+    await trainingDays.addExercise({
+      trainingDayId: secondDay.id,
+      name: 'bench   PRESS',
+      targetSets: 1,
+      targetReps: 8,
+      targetWeight: 70,
+    });
+
+    const firstSession = await new StartWorkoutService(db).startFromActivePlan(firstDay.id);
+    const firstDetails = await workouts.getDetails(firstSession.id);
+    const firstSet = firstDetails?.exercises[0]?.sets[0];
+    expect(firstSet).toBeDefined();
+    await workouts.completeSet(firstSet!.id, 87.5, 6);
+    await workouts.finishSession(firstSession.id, 'completed');
+
+    const secondSession = await new StartWorkoutService(db).startFromActivePlan(secondDay.id);
+    const secondDetails = await workouts.getDetails(secondSession.id);
+
+    expect(secondDetails?.exercises[0]?.sets[0]).toMatchObject({
+      targetWeight: 70,
+      targetReps: 8,
+      actualWeight: 87.5,
+      actualReps: 6,
+    });
+  });
 });

@@ -65,6 +65,53 @@ describe('WorkoutRepository', () => {
     expect((await days.listExercises(day.id))[0]?.note).toBe('Harder on the left side');
   });
 
+  it('saves a workout comment for the same exercise in every plan day', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    const plans = new PlanRepository(db);
+    const days = new TrainingDayRepository(db);
+    const workouts = new WorkoutRepository(db);
+    const plan = await plans.create('Strength');
+    const firstDay = await days.createDay(plan.id, 'Push A');
+    const secondDay = await days.createDay(plan.id, 'Push B');
+    const firstPlannedExercise = await days.addExercise({
+      trainingDayId: firstDay.id,
+      name: 'Bench press',
+      targetSets: 1,
+      targetReps: 5,
+      targetWeight: 80,
+    });
+    await days.addExercise({
+      trainingDayId: secondDay.id,
+      name: 'BENCH PRESS',
+      targetSets: 1,
+      targetReps: 8,
+      targetWeight: 70,
+    });
+    const session = await workouts.createSession({
+      sourcePlanId: plan.id,
+      sourceTrainingDayId: firstDay.id,
+      planNameSnapshot: plan.name,
+      trainingDayNameSnapshot: firstDay.name,
+    });
+    const workoutExercise = await workouts.addExercise({
+      workoutSessionId: session.id,
+      sourcePlannedExerciseId: firstPlannedExercise.id,
+      nameSnapshot: firstPlannedExercise.name,
+      noteSnapshot: null,
+      order: 1,
+    });
+
+    await workouts.updateExerciseNote(workoutExercise.id, 'Use a controlled eccentric');
+
+    await expect(days.listExercises(firstDay.id)).resolves.toEqual([
+      expect.objectContaining({ note: 'Use a controlled eccentric' }),
+    ]);
+    await expect(days.listExercises(secondDay.id)).resolves.toEqual([
+      expect.objectContaining({ note: 'Use a controlled eccentric' }),
+    ]);
+  });
+
   it('updates editable values of a pending set', async () => {
     const db = new MemoryDatabase();
     await runMigrations(db);
