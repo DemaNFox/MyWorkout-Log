@@ -5,8 +5,10 @@ import type { TimerAlertMode } from '@entities/settings/model/types';
 type WorkoutTimerSoundModule = {
   cancelScheduledTimerAlert?: () => void;
   dismissTimerAlert?: () => void;
+  isTimerAlertActive?: () => Promise<boolean>;
   pickNotificationSound?: () => Promise<{ uri: string | null; title: string | null }>;
   playNotificationSound?: (uri: string | null, volume: number) => void;
+  requestFullScreenAlertPermission?: () => Promise<boolean>;
   scheduleTimerAlert?: (delayMs: number, mode: TimerAlertMode, uri: string | null, volume: number) => void;
   showTimerAlert?: () => void;
   stopSound?: () => void;
@@ -29,10 +31,24 @@ export const playTimerAlert = (mode: TimerAlertMode, soundUri: string | null, vo
 export const pickTimerSound = async (): Promise<{ uri: string | null; title: string | null }> =>
   workoutTimerSound?.pickNotificationSound?.() ?? { uri: null, title: null };
 
-export const requestTimerAlertPermission = async (): Promise<boolean> =>
-  Platform.OS !== 'android' ||
-  Platform.Version < 33 ||
-  (await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)) === PermissionsAndroid.RESULTS.GRANTED;
+let fullScreenPermissionRequested = false;
+
+export const requestTimerAlertPermission = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+  const notificationsGranted =
+    Platform.Version < 33 ||
+    (await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)) === PermissionsAndroid.RESULTS.GRANTED;
+  if (!notificationsGranted) {
+    return false;
+  }
+  if (Platform.Version >= 34 && !fullScreenPermissionRequested) {
+    fullScreenPermissionRequested = true;
+    return workoutTimerSound?.requestFullScreenAlertPermission?.() ?? false;
+  }
+  return true;
+};
 
 export const scheduleTimerAlert = (
   delayMs: number,
@@ -52,3 +68,6 @@ export const stopTimerSound = (): void => {
   workoutTimerSound?.cancelScheduledTimerAlert?.();
   workoutTimerSound?.dismissTimerAlert?.();
 };
+
+export const isNativeTimerAlertActive = async (): Promise<boolean> =>
+  workoutTimerSound?.isTimerAlertActive?.() ?? false;

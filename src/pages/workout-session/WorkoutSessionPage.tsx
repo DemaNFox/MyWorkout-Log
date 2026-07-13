@@ -32,6 +32,8 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   const restorePendingRef = useRef(true);
   const [details, setDetails] = useState<WorkoutDetails | null>(null);
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
+  const [workoutComment, setWorkoutComment] = useState('');
+  const [isFinishing, setIsFinishing] = useState(false);
   const [editingExerciseNoteId, setEditingExerciseNoteId] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, {
     weight: string;
@@ -80,6 +82,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
       setExerciseNotes(
         Object.fromEntries(nextDetails.exercises.map(exercise => [exercise.id, exercise.noteSnapshot ?? ''])),
       );
+      setWorkoutComment(nextDetails.session.comment ?? '');
       const activeRestSet = findActiveRestSet(nextDetails);
       setActiveRestSetId(activeRestSet?.id ?? null);
       setActiveRestStartedAt(activeRestSet?.restStartedAt ?? null);
@@ -221,13 +224,17 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   };
 
   const finish = async () => {
+    if (isFinishing) {
+      return;
+    }
+    setIsFinishing(true);
     try {
       stopTimerSound();
       const repository = new WorkoutRepository(db);
       if (activeRestSetId) {
         await repository.finishRest(activeRestSetId, getElapsedRestSec(activeRestStartedAt, activeRestTargetSec, activeRestRemainingSec));
       }
-      await repository.finishSession(route.params.workoutId, 'completed');
+      await repository.finishSession(route.params.workoutId, 'completed', workoutComment);
       const finishedSession = await repository.getSession(route.params.workoutId);
       if (finishedSession?.status !== 'completed' || !finishedSession.finishedAt) {
         Alert.alert('Cannot finish workout', 'Workout was not saved as completed. Please try again.');
@@ -240,6 +247,8 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
       navigation.navigate('MainTabs');
     } catch (error) {
       Alert.alert('Cannot finish workout', error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setIsFinishing(false);
     }
   };
 
@@ -397,7 +406,9 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
               <Text style={{ color: colors.text, fontSize: 20, fontWeight: '800' }}>{exercise.nameSnapshot}</Text>
               {exercise.sets.map(set => {
                 const restLabel = getRestLabel(details, set.id);
-                const setEditable = !set.completed && activeExerciseSetId !== set.id;
+                const firstPendingSet = exercise.sets.find(candidate => !candidate.completed);
+                const canCompleteInOrder = set.completed || firstPendingSet?.id === set.id;
+                const setEditable = !set.completed && canCompleteInOrder && activeExerciseSetId !== set.id;
 
                 return (
                 <View key={set.id} style={{ gap: 8 }}>
@@ -471,11 +482,12 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                         </Text>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                           <View style={{ flex: 1 }}>
-                            <Button onPress={() => completeSet(set.id)}>Complete set</Button>
+                            <Button disabled={!canCompleteInOrder} onPress={() => completeSet(set.id)}>Complete set</Button>
                           </View>
                           <View style={{ flex: 1 }}>
                             <Button
                               onPress={() => void toggleExerciseTimer(set)}
+                              disabled={!canCompleteInOrder}
                               variant={activeExerciseSetId === set.id ? 'secondary' : 'primary'}>
                               {activeExerciseSetId === set.id ? 'Stop time' : 'Start time'}
                             </Button>
@@ -483,7 +495,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                         </View>
                       </>
                     ) : (
-                      <Button onPress={() => completeSet(set.id)}>Complete set</Button>
+                      <Button disabled={!canCompleteInOrder} onPress={() => completeSet(set.id)}>Complete set</Button>
                     )
                   )}
                 </View>
@@ -508,7 +520,15 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
             </Card>
             </View>
           ))}
-          <Button onPress={finish}>Finish workout</Button>
+          <Card>
+            <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Workout comment</Text>
+            <TextField
+              label="Comment for this workout"
+              onChangeText={setWorkoutComment}
+              value={workoutComment}
+            />
+          </Card>
+          <Button disabled={isFinishing} onPress={finish}>{isFinishing ? 'Finishing…' : 'Finish workout'}</Button>
           <Button onPress={confirmCancelWorkout} variant="danger">Cancel workout</Button>
         </View>
       </ScrollView>

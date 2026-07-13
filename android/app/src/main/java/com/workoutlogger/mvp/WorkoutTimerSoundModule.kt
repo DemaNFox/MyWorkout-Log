@@ -2,6 +2,7 @@ package com.workoutlogger.mvp
 
 import android.app.Activity
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.media.RingtoneManager
@@ -10,6 +11,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.provider.Settings
 import android.view.WindowManager
 import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.BaseActivityEventListener
@@ -64,6 +66,11 @@ class WorkoutTimerSoundModule(private val reactContext: ReactApplicationContext)
   }
 
   @ReactMethod
+  fun isTimerAlertActive(promise: Promise) {
+    promise.resolve(WorkoutTimerAlertService.isAlertActive)
+  }
+
+  @ReactMethod
   fun scheduleTimerAlert(delayMs: Double, mode: String, uri: String?, volume: Double) {
     cancelScheduledTimerAlert()
     if (mode == "silent") {
@@ -106,6 +113,41 @@ class WorkoutTimerSoundModule(private val reactContext: ReactApplicationContext)
       }
       activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
+  }
+
+  @ReactMethod
+  fun requestFullScreenAlertPermission(promise: Promise) {
+    if (Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true) && !Settings.canDrawOverlays(reactContext)) {
+      val overlayIntent = Intent(
+        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+        Uri.parse("package:${reactContext.packageName}"),
+      ).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      runCatching { reactContext.startActivity(overlayIntent) }
+        .onSuccess { promise.resolve(false) }
+        .onFailure { error -> promise.reject("timer_alert.overlay_settings", error) }
+      return
+    }
+
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+      promise.resolve(true)
+      return
+    }
+
+    val notificationManager = reactContext.getSystemService(NotificationManager::class.java)
+    if (notificationManager?.canUseFullScreenIntent() == true) {
+      promise.resolve(true)
+      return
+    }
+
+    val intent = Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
+      data = Uri.parse("package:${reactContext.packageName}")
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching { reactContext.startActivity(intent) }
+      .onSuccess { promise.resolve(false) }
+      .onFailure { error -> promise.reject("timer_alert.full_screen_settings", error) }
   }
 
   @ReactMethod

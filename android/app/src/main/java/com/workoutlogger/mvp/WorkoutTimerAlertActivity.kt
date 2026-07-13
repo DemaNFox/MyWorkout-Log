@@ -16,6 +16,15 @@ class WorkoutTimerAlertActivity : Activity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
 
+    if (intent.getBooleanExtra(WorkoutTimerAlertReceiver.EXTRA_TIMER_ALERT, false)) {
+      WorkoutTimerAlertService.start(
+        context = this,
+        mode = intent.getStringExtra(WorkoutTimerAlertReceiver.EXTRA_MODE) ?: "vibrate",
+        soundUri = intent.getStringExtra(WorkoutTimerAlertReceiver.EXTRA_SOUND_URI),
+        volume = intent.getDoubleExtra(WorkoutTimerAlertReceiver.EXTRA_VOLUME, 1.0),
+      )
+    }
+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
       setShowWhenLocked(true)
       setTurnScreenOn(true)
@@ -28,13 +37,6 @@ class WorkoutTimerAlertActivity : Activity() {
     }
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     setContentView(createAlertView())
-  }
-
-  override fun onResume() {
-    super.onResume()
-    if (!WorkoutTimerAlertService.isAlertActive) {
-      finish()
-    }
   }
 
   @Deprecated("The timer alert must be stopped explicitly while it is ringing.")

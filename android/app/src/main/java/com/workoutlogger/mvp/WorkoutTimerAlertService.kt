@@ -149,9 +149,6 @@ class WorkoutTimerAlertService : Service() {
       return
     }
     val notificationManager = getSystemService(NotificationManager::class.java)
-    if (notificationManager.getNotificationChannel(CHANNEL_ID) != null) {
-      return
-    }
     notificationManager.createNotificationChannel(
       NotificationChannel(CHANNEL_ID, "Active rest timer alert", NotificationManager.IMPORTANCE_HIGH).apply {
         description = "Continuous alert when workout rest is finished"
@@ -165,7 +162,7 @@ class WorkoutTimerAlertService : Service() {
   companion object {
     private const val ACTION_START = "com.workoutlogger.mvp.START_TIMER_ALERT_SERVICE"
     private const val ACTION_STOP = "com.workoutlogger.mvp.STOP_TIMER_ALERT_SERVICE"
-    private const val CHANNEL_ID = "workout_rest_timer_active_v3"
+    private const val CHANNEL_ID = "workout_rest_timer_active_v4"
     private const val MODE_SOUND = "sound"
     private const val MODE_SOUND_VIBRATE = "sound-vibrate"
     private const val MODE_VIBRATE = "vibrate"
@@ -189,6 +186,7 @@ class WorkoutTimerAlertService : Service() {
     fun stop(context: Context) {
       isAlertActive = false
       context.stopService(Intent(context, WorkoutTimerAlertService::class.java))
+      context.getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
     }
   }
 }

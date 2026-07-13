@@ -448,4 +448,64 @@ describe('WorkoutRepository', () => {
       restDurationSec: null,
     });
   });
+
+  it('requires sets of an exercise to be completed in order', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    const workouts = new WorkoutRepository(db);
+    const session = await workouts.createSession({
+      sourcePlanId: null,
+      sourceTrainingDayId: null,
+      planNameSnapshot: 'Plan',
+      trainingDayNameSnapshot: 'Day',
+    });
+    const exercise = await workouts.addExercise({
+      workoutSessionId: session.id,
+      sourcePlannedExerciseId: null,
+      nameSnapshot: 'Bench Press',
+      noteSnapshot: null,
+      order: 1,
+    });
+    const first = await workouts.addSet({
+      workoutExerciseId: exercise.id,
+      setIndex: 1,
+      targetWeight: 80,
+      targetReps: 5,
+      actualWeight: 80,
+      actualReps: 5,
+    });
+    const second = await workouts.addSet({
+      workoutExerciseId: exercise.id,
+      setIndex: 2,
+      targetWeight: 80,
+      targetReps: 5,
+      actualWeight: 80,
+      actualReps: 5,
+    });
+
+    await expect(workouts.completeSet(second.id, 80, 5)).rejects.toMatchObject({
+      code: 'workout.setOutOfOrder',
+    });
+    await workouts.completeSet(first.id, 80, 5);
+    await expect(workouts.completeSet(second.id, 80, 5)).resolves.toBeUndefined();
+  });
+
+  it('stores the workout comment and keeps repeated completion idempotent', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    const workouts = new WorkoutRepository(db);
+    const session = await workouts.createSession({
+      sourcePlanId: null,
+      sourceTrainingDayId: null,
+      planNameSnapshot: 'Plan',
+      trainingDayNameSnapshot: 'Day',
+    });
+
+    await workouts.finishSession(session.id, 'completed', '  Strong session  ');
+    const firstFinished = await workouts.getSession(session.id);
+    await workouts.finishSession(session.id, 'completed', 'Must not overwrite');
+
+    await expect(workouts.getSession(session.id)).resolves.toEqual(firstFinished);
+    expect(firstFinished?.comment).toBe('Strong session');
+  });
 });

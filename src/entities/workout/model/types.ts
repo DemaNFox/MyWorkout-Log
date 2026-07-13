@@ -10,6 +10,7 @@ export interface WorkoutSession {
   startedAt: string | null;
   finishedAt: string | null;
   durationSec: number | null;
+  comment: string | null;
   createdAt: string;
   updatedAt: string;
 }

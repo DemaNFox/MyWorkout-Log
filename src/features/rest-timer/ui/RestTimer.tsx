@@ -8,6 +8,7 @@ import { SettingsRepository } from '@entities/settings/repository/settingsReposi
 import { formatDuration } from '@shared/lib/date';
 import {
   cancelScheduledTimerAlert,
+  isNativeTimerAlertActive,
   requestTimerAlertPermission,
   scheduleTimerAlert,
   stopTimerSound,
@@ -43,7 +44,7 @@ export const RestTimer = ({
   const [selectedSec, setSelectedSec] = useState<number>(90);
   const [remainingSec, setRemainingSec] = useState<number>(90);
   const [presets, setPresets] = useState<number[]>([60, 90, 120]);
-  const [customMinutes, setCustomMinutes] = useState('1');
+  const [customMinutes, setCustomMinutes] = useState('01');
   const [customSeconds, setCustomSeconds] = useState('30');
   const [running, setRunning] = useState(false);
   const [alertVisible, setAlertVisible] = useState(false);
@@ -157,6 +158,11 @@ export const RestTimer = ({
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
         syncRemaining();
+        void isNativeTimerAlertActive().then(isActive => {
+          if (!isActive) {
+            setAlertVisible(false);
+          }
+        });
       }
     });
 
@@ -180,10 +186,12 @@ export const RestTimer = ({
     onCompleteRef.current?.(targetSec);
   };
 
-  const applyDuration = (seconds: number) => {
+  const applyDuration = (seconds: number, syncCustomParts = true) => {
     const nextSeconds = Math.max(1, Math.round(seconds));
     setSelectedSec(nextSeconds);
-    setCustomParts(nextSeconds);
+    if (syncCustomParts) {
+      setCustomParts(nextSeconds);
+    }
     targetSecRef.current = nextSeconds;
 
     if (!running) {
@@ -212,7 +220,7 @@ export const RestTimer = ({
 
   const setCustomParts = (totalSeconds: number) => {
     const normalizedSeconds = Math.max(0, Math.round(totalSeconds));
-    setCustomMinutes(String(Math.floor(normalizedSeconds / 60)));
+    setCustomMinutes(String(Math.floor(normalizedSeconds / 60)).padStart(2, '0'));
     setCustomSeconds(String(normalizedSeconds % 60).padStart(2, '0'));
   };
 
@@ -220,13 +228,13 @@ export const RestTimer = ({
     applyDuration(seconds);
   };
 
-  const applyCustom = () => {
-    const seconds = getSecondsFromParts(customMinutes, customSeconds);
-    if (seconds === null || seconds <= 0) {
-      setCustomParts(selectedSec);
-      return;
+  const updateCustom = (minutes: string, seconds: string) => {
+    setCustomMinutes(minutes);
+    setCustomSeconds(seconds);
+    const totalSeconds = getSecondsFromParts(minutes, seconds);
+    if (totalSeconds !== null && totalSeconds > 0) {
+      applyDuration(totalSeconds, false);
     }
-    applyDuration(seconds);
   };
 
   const stop = () => {
@@ -292,9 +300,8 @@ export const RestTimer = ({
           <CustomTimeInput
             active={selectedSec === getSecondsFromParts(customMinutes, customSeconds)}
             minutes={customMinutes}
-            onApply={applyCustom}
-            onMinutesChange={setCustomMinutes}
-            onSecondsChange={setCustomSeconds}
+            onMinutesChange={value => updateCustom(value, customSeconds)}
+            onSecondsChange={value => updateCustom(customMinutes, value)}
             seconds={customSeconds}
           />
           <IconTimerButton disabled={running} icon={remainingSec === 0 ? 'replay' : 'play-arrow'} onPress={start} />
@@ -369,7 +376,6 @@ const TimerChip = ({ active, label, onPress }: TimerChipProps) => {
 interface CustomTimeInputProps {
   active: boolean;
   minutes: string;
-  onApply: () => void;
   onMinutesChange: (value: string) => void;
   onSecondsChange: (value: string) => void;
   seconds: string;
@@ -378,13 +384,31 @@ interface CustomTimeInputProps {
 const CustomTimeInput = ({
   active,
   minutes,
-  onApply,
   onMinutesChange,
   onSecondsChange,
   seconds,
 }: CustomTimeInputProps) => {
   const colors = useThemeColors();
   const minutesRef = useRef<TextInput | null>(null);
+  const secondsRef = useRef<TextInput | null>(null);
+
+  const handleMinutesChange = (value: string) => {
+    const normalized = normalizeTimePart(value);
+    if (normalized === null) {
+      return;
+    }
+    onMinutesChange(normalized);
+    if (normalized.length === 2) {
+      requestAnimationFrame(() => secondsRef.current?.focus());
+    }
+  };
+
+  const handleSecondsChange = (value: string) => {
+    const normalized = normalizeTimePart(value);
+    if (normalized !== null) {
+      onSecondsChange(normalized);
+    }
+  };
 
   const handleSecondsKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
     if (event.nativeEvent.key === 'Backspace' && seconds.length === 0) {
@@ -405,10 +429,10 @@ const CustomTimeInput = ({
       }}>
       <TextInput
         keyboardType="numeric"
-        onBlur={onApply}
-        onChangeText={onMinutesChange}
-        onSubmitEditing={onApply}
+        maxLength={2}
+        onChangeText={handleMinutesChange}
         ref={minutesRef}
+        selectTextOnFocus
         style={{
           minWidth: 26,
           color: colors.text,
@@ -423,10 +447,10 @@ const CustomTimeInput = ({
       <TextInput
         keyboardType="numeric"
         maxLength={2}
-        onBlur={onApply}
-        onChangeText={onSecondsChange}
+        onChangeText={handleSecondsChange}
         onKeyPress={handleSecondsKeyPress}
-        onSubmitEditing={onApply}
+        ref={secondsRef}
+        selectTextOnFocus
         style={{
           minWidth: 26,
           color: colors.text,
@@ -479,10 +503,19 @@ const getSecondsFromParts = (minutes: string, seconds: string): number | null =>
     !Number.isFinite(parsedMinutes) ||
     !Number.isFinite(parsedSeconds) ||
     parsedMinutes < 0 ||
+    parsedMinutes >= 60 ||
     parsedSeconds < 0 ||
     parsedSeconds >= 60
   ) {
     return null;
   }
   return Math.round(parsedMinutes) * 60 + Math.round(parsedSeconds);
+};
+
+const normalizeTimePart = (value: string): string | null => {
+  const digits = value.replace(/\D/g, '').slice(0, 2);
+  if (digits === '') {
+    return '';
+  }
+  return Number(digits) <= 59 ? digits : null;
 };

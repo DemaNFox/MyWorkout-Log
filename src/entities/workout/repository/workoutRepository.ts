@@ -17,6 +17,7 @@ type SessionRow = {
   started_at: string | null;
   finished_at: string | null;
   duration_sec: number | null;
+  comment?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -79,6 +80,7 @@ const toSession = (row: SessionRow): WorkoutSession => ({
   startedAt: row.started_at,
   finishedAt: row.finished_at,
   durationSec: row.duration_sec,
+  comment: row.comment ?? null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -136,6 +138,7 @@ export class WorkoutRepository {
       startedAt: timestamp,
       finishedAt: null,
       durationSec: null,
+      comment: null,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -270,6 +273,11 @@ export class WorkoutRepository {
       const set = await this.getSet(setId);
       if (!set) {
         throw new AppError('Workout set was not found', 'workout.setNotFound');
+      }
+      const sets = await this.listSets(set.workoutExerciseId);
+      const earlierPendingSet = sets.find(candidate => candidate.setIndex < set.setIndex && !candidate.completed);
+      if (earlierPendingSet) {
+        throw new AppError('Complete the previous set first', 'workout.setOutOfOrder');
       }
       await this.db.execute(
         'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, actual_duration_sec = ?, completed = ?, completed_at = ?, updated_at = ? WHERE id = ?',
@@ -460,18 +468,26 @@ export class WorkoutRepository {
     );
   }
 
-  async finishSession(id: string, status: WorkoutSession['status']): Promise<void> {
+  async finishSession(id: string, status: WorkoutSession['status'], comment?: string): Promise<void> {
     const session = await this.getSession(id);
     if (!session) {
       throw new AppError('Workout session was not found', 'workout.sessionNotFound');
+    }
+    if (session.finishedAt || session.status !== 'planned') {
+      if (session.status === status && session.finishedAt) {
+        return;
+      }
+      throw new AppError('Workout session is already closed', 'workout.sessionAlreadyClosed');
     }
     const finishedAt = nowIso();
     const durationSec = session.startedAt
       ? Math.max(0, Math.floor((new Date(finishedAt).getTime() - new Date(session.startedAt).getTime()) / 1000))
       : 0;
     const result = await this.db.execute(
-      'UPDATE workout_sessions SET status = ?, finished_at = ?, duration_sec = ?, updated_at = ? WHERE id = ?',
-      [status, finishedAt, durationSec, finishedAt, id],
+      `UPDATE workout_sessions
+       SET status = ?, finished_at = ?, duration_sec = ?, comment = ?, updated_at = ?
+       WHERE id = ? AND status = ? AND finished_at IS NULL`,
+      [status, finishedAt, durationSec, comment?.trim() || null, finishedAt, id, 'planned'],
     );
     if (result.changes === 0) {
       throw new AppError('Workout session was not updated', 'workout.sessionNotUpdated');

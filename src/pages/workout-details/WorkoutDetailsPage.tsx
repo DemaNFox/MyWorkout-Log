@@ -33,6 +33,12 @@ export const WorkoutDetailsPage = ({ route }: Props) => {
 
   return (
     <Screen title={details.session.trainingDayNameSnapshot ?? 'Workout'}>
+      {details.session.comment ? (
+        <Card>
+          <Text style={{ color: colors.muted, fontWeight: '700' }}>Workout comment</Text>
+          <Text style={{ color: colors.text }}>{details.session.comment}</Text>
+        </Card>
+      ) : null}
       {details.exercises.map(exercise => (
         <Card key={exercise.id}>
           <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>{exercise.nameSnapshot}</Text>

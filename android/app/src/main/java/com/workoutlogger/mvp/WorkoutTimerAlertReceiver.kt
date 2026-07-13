@@ -21,6 +21,15 @@ class WorkoutTimerAlertReceiver : BroadcastReceiver() {
       soundUri = intent.getStringExtra(EXTRA_SOUND_URI),
       volume = intent.getDoubleExtra(EXTRA_VOLUME, 1.0),
     )
+    runCatching {
+      context.startActivity(
+        Intent(context, WorkoutTimerAlertActivity::class.java).apply {
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+          addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        },
+      )
+    }
   }
 
   companion object {

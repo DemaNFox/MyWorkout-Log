@@ -21,6 +21,7 @@ describe('WorkoutSummaryCard', () => {
       startedAt: '2026-06-15T10:00:00.000Z',
       finishedAt: '2026-06-15T10:45:00.000Z',
       durationSec: 2700,
+      comment: null,
       createdAt: '2026-06-15T10:00:00.000Z',
       updatedAt: '2026-06-15T10:45:00.000Z',
     };
