@@ -45,7 +45,7 @@ describe('ImportService', () => {
                   order: 1,
                   exercises: [
                     {
-                      name: 'Row',
+                      name: 'Barbell Row',
                       targetSets: 3,
                       targetReps: 8,
                       targetWeight: 60,
@@ -128,5 +128,89 @@ describe('ImportService', () => {
     await expect(new TrainingDayRepository(db).listExercises(day?.id ?? '')).resolves.toEqual([
       expect.objectContaining({ exerciseId: 'custom-landmine-press', weightMode: 'total' }),
     ]);
+  });
+
+  it('rejects an unknown exercise without metadata and rolls back the whole import', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+
+    await expect(
+      new ImportService(db).importJson(
+        JSON.stringify({
+          schemaVersion: 2,
+          type: 'workout-programs',
+          exportedAt: '2026-07-21T12:00:00.000Z',
+          payload: {
+            programs: [{
+              name: 'Invalid program',
+              days: [{
+                name: 'Day',
+                order: 1,
+                exercises: [{
+                  name: 'Unknown exercise',
+                  exerciseId: 'unknown-exercise',
+                  metricType: 'reps',
+                  measurementType: 'weight_reps',
+                  weightMode: 'total',
+                  targetSets: 3,
+                  targetReps: 8,
+                  targetWeight: 20,
+                  note: null,
+                  order: 1,
+                }],
+              }],
+            }],
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'import.exerciseMissingMetadata' });
+    await expect(new PlanRepository(db).list()).resolves.toEqual([]);
+  });
+
+  it('imports unknown full metadata as a custom exercise even without an isCustom flag', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+
+    await new ImportService(db).importJson(
+      JSON.stringify({
+        schemaVersion: 2,
+        type: 'workout-programs',
+        exportedAt: '2026-07-21T12:00:00.000Z',
+        payload: {
+          exerciseDictionary: [{
+            id: 'partner-resisted-row',
+            name: 'Partner resisted row',
+            primaryMuscles: ['back'],
+            movementType: 'row',
+            equipmentType: 'other',
+            defaultMeasurementType: 'assisted_reps',
+          }],
+          programs: [{
+            name: 'Imported program',
+            days: [{
+              name: 'Day',
+              order: 1,
+              exercises: [{
+                name: 'Partner resisted row',
+                exerciseId: 'partner-resisted-row',
+                metricType: 'reps',
+                measurementType: 'assisted_reps',
+                weightMode: null,
+                targetSets: 3,
+                targetReps: 10,
+                targetWeight: 0,
+                note: null,
+                order: 1,
+              }],
+            }],
+          }],
+        },
+      }),
+    );
+
+    await expect(new ExerciseCatalogRepository(db).getById('partner-resisted-row')).resolves.toMatchObject({
+      isCustom: true,
+      equipmentType: 'other',
+    });
   });
 });

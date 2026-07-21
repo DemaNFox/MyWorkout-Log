@@ -67,7 +67,19 @@ export class MemoryDatabase implements Database {
   }
 
   async transaction(work: () => Promise<void>): Promise<void> {
-    await work();
+    const snapshot = new Map(
+      [...this.tables.entries()].map(([table, rows]) => [
+        table,
+        rows.map(row => ({ ...row })),
+      ]),
+    );
+    try {
+      await work();
+    } catch (error) {
+      this.tables.clear();
+      snapshot.forEach((rows, table) => this.tables.set(table, rows));
+      throw error;
+    }
   }
 
   private insert(sql: string, params: readonly SqlValue[]): void {

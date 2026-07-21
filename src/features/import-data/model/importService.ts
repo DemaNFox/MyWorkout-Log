@@ -1,9 +1,11 @@
 import { parseImportEnvelope } from '@entities/import-export/lib/validateImportEnvelope';
 import { PlanRepository } from '@entities/plan/repository/planRepository';
 import type { WorkoutPlanPayload } from '@entities/import-export/model/types';
+import type { Exercise } from '@entities/exercise/model/types';
 import { ExerciseCatalogRepository } from '@entities/exercise/repository/exerciseCatalogRepository';
 import { TrainingDayRepository } from '@entities/training-day/repository/trainingDayRepository';
 import type { Database } from '@shared/db/types';
+import { AppError } from '@shared/lib/errors';
 
 export interface ImportResult {
   importedPlanIds: string[];
@@ -15,24 +17,27 @@ export class ImportService {
   async importJson(raw: string): Promise<ImportResult> {
     const envelope = parseImportEnvelope(raw);
     if (envelope.type === 'workout-plan') {
-      return this.importPlans([envelope.payload]);
+      return this.importPrograms([envelope.payload], []);
     }
     if (envelope.type === 'workout-programs') {
-      const catalog = new ExerciseCatalogRepository(this.db);
-      for (const exercise of envelope.payload.exerciseDictionary ?? []) {
-        await catalog.importCustom(exercise);
-      }
-      return this.importPlans(envelope.payload.programs);
+      return this.importPrograms(
+        envelope.payload.programs,
+        envelope.payload.exerciseDictionary ?? [],
+      );
     }
     return { importedPlanIds: [] };
   }
 
-  private async importPlans(payloads: WorkoutPlanPayload[]): Promise<ImportResult> {
+  private async importPrograms(
+    payloads: WorkoutPlanPayload[],
+    exerciseDictionary: Exercise[],
+  ): Promise<ImportResult> {
     const plans = new PlanRepository(this.db);
     const days = new TrainingDayRepository(this.db);
     const importedPlanIds: string[] = [];
 
     await this.db.transaction(async () => {
+      await this.prepareExerciseCatalog(payloads, exerciseDictionary);
       for (const payload of payloads) {
         const plan = await plans.create(payload.name);
         importedPlanIds.push(plan.id);
@@ -62,5 +67,38 @@ export class ImportService {
     });
 
     return { importedPlanIds };
+  }
+
+  private async prepareExerciseCatalog(
+    payloads: WorkoutPlanPayload[],
+    exerciseDictionary: Exercise[],
+  ): Promise<void> {
+    const catalog = new ExerciseCatalogRepository(this.db);
+    const exercises = payloads.flatMap(program =>
+      program.days.flatMap(day => day.exercises),
+    );
+
+    for (const plannedExercise of exercises) {
+      const existing = plannedExercise.exerciseId
+        ? await catalog.getById(plannedExercise.exerciseId)
+        : await catalog.findByName(plannedExercise.name);
+      if (existing) {
+        continue;
+      }
+
+      const metadata = exerciseDictionary.find(candidate =>
+        plannedExercise.exerciseId
+          ? candidate.id === plannedExercise.exerciseId
+          : candidate.name.trim().toLocaleLowerCase() ===
+            plannedExercise.name.trim().toLocaleLowerCase(),
+      );
+      if (!metadata) {
+        throw new AppError(
+          `Exercise “${plannedExercise.name}” is missing from the exercise dictionary`,
+          'import.exerciseMissingMetadata',
+        );
+      }
+      await catalog.importAsCustom({ ...metadata, isCustom: true });
+    }
   }
 }

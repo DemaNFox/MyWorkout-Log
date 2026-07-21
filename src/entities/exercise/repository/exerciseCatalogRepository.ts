@@ -97,10 +97,7 @@ export class ExerciseCatalogRepository {
     return created;
   }
 
-  async importCustom(exercise: Exercise): Promise<void> {
-    if (!exercise.isCustom) {
-      return;
-    }
+  async importAsCustom(exercise: Exercise): Promise<void> {
     const existingById = await this.getById(exercise.id);
     if (existingById) {
       return;
