@@ -5,6 +5,8 @@ import type { Database, ExecuteResult, SqlValue } from '../types';
 type ExpoDb = Awaited<ReturnType<typeof SQLite.openDatabaseAsync>>;
 
 export class ExpoDatabase implements Database {
+  private transactionDepth = 0;
+
   constructor(private readonly db: ExpoDb) {}
 
   static async open(name = 'workout_logger.db'): Promise<ExpoDatabase> {
@@ -28,6 +30,16 @@ export class ExpoDatabase implements Database {
   }
 
   async transaction(work: () => Promise<void>): Promise<void> {
-    await this.db.withTransactionAsync(work);
+    if (this.transactionDepth > 0) {
+      await work();
+      return;
+    }
+
+    this.transactionDepth += 1;
+    try {
+      await this.db.withTransactionAsync(work);
+    } finally {
+      this.transactionDepth -= 1;
+    }
   }
 }
