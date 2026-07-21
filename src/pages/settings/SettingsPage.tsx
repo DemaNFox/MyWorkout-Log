@@ -19,8 +19,18 @@ import { Card } from '@shared/ui/Card';
 import { pickTimerSound } from '@shared/lib/timerAlert';
 import { Screen } from '@shared/ui/Screen';
 import { TextField } from '@shared/ui/TextField';
+import {
+  OperationStatusModal,
+  type OperationStatus,
+} from '@shared/ui/OperationStatusModal';
+import { AppError } from '@shared/lib/errors';
 
 type ExportPickerMode = 'programs' | 'history';
+type OperationFeedback = {
+  status: OperationStatus;
+  title: string;
+  message: string;
+};
 const timerAlertModes = ['sound-vibrate', 'sound', 'vibrate', 'silent'] as const;
 
 export const SettingsPage = () => {
@@ -37,6 +47,7 @@ export const SettingsPage = () => {
   const [importText, setImportText] = useState('');
   const [exportText, setExportText] = useState('');
   const [exportFileName, setExportFileName] = useState<string | null>(null);
+  const [operationFeedback, setOperationFeedback] = useState<OperationFeedback | null>(null);
 
   useEffect(() => {
     void new SettingsRepository(db).get().then(nextSettings => {
@@ -114,8 +125,22 @@ export const SettingsPage = () => {
   };
 
   const backup = async () => {
-    setExportText(JSON.stringify(await new ExportService(db).createBackup(), null, 2));
-    setExportFileName(null);
+    setOperationFeedback({
+      status: 'loading',
+      title: 'Creating backup',
+      message: 'Collecting your local workout data…',
+    });
+    try {
+      setExportText(JSON.stringify(await new ExportService(db).createBackup(), null, 2));
+      setExportFileName(null);
+      setOperationFeedback({
+        status: 'success',
+        title: 'Backup created',
+        message: 'The backup JSON is ready below.',
+      });
+    } catch (error) {
+      showOperationError('Backup failed', getExportErrorMessage(error));
+    }
   };
 
   const shareExport = async (input: {
@@ -127,31 +152,54 @@ export const SettingsPage = () => {
     setExportText(input.contents);
     setExportFileName(sharedFile.fileName);
     setExportPickerVisible(false);
+    return sharedFile;
   };
 
   const exportPrograms = async (planIds: string[]) => {
+    setExportPickerVisible(false);
+    setOperationFeedback({
+      status: 'loading',
+      title: 'Exporting programs',
+      message: 'Preparing the JSON file…',
+    });
     try {
       const exported = await new ExportService(db).exportPrograms(planIds);
-      await shareExport({
+      const file = await shareExport({
         contents: JSON.stringify(exported, null, 2),
         fileNamePrefix: 'workout-logger-programs',
         dialogTitle: 'Share programs JSON',
       });
+      setOperationFeedback({
+        status: 'success',
+        title: 'Programs exported',
+        message: `File created: ${file.fileName}`,
+      });
     } catch (error) {
-      Alert.alert('Export failed', error instanceof Error ? error.message : 'Unknown error');
+      showOperationError('Export failed', getExportErrorMessage(error));
     }
   };
 
   const exportProgramHistory = async (planIds: string[]) => {
+    setExportPickerVisible(false);
+    setOperationFeedback({
+      status: 'loading',
+      title: 'Exporting history',
+      message: 'Preparing workout history and progress data…',
+    });
     try {
       const exported = await new ExportService(db).exportProgramHistory(planIds);
-      await shareExport({
+      const file = await shareExport({
         contents: JSON.stringify(exported, null, 2),
         fileNamePrefix: 'workout-logger-program-history',
         dialogTitle: 'Share program history JSON',
       });
+      setOperationFeedback({
+        status: 'success',
+        title: 'History exported',
+        message: `File created: ${file.fileName}`,
+      });
     } catch (error) {
-      Alert.alert('Export failed', error instanceof Error ? error.message : 'Unknown error');
+      showOperationError('Export failed', getExportErrorMessage(error));
     }
   };
 
@@ -172,13 +220,7 @@ export const SettingsPage = () => {
   };
 
   const importJson = async () => {
-    try {
-      const result = await new ImportService(db).importJson(importText);
-      Alert.alert('Import complete', `Imported programs: ${result.importedPlanIds.length}`);
-      setImportText('');
-    } catch (error) {
-      Alert.alert('Import failed', error instanceof Error ? error.message : 'Unknown error');
-    }
+    await runImport(importText);
   };
 
   const importJsonFile = async () => {
@@ -195,13 +237,41 @@ export const SettingsPage = () => {
       if (!file) {
         throw new Error('No file selected');
       }
+      setOperationFeedback({
+        status: 'loading',
+        title: 'Reading import file',
+        message: 'Loading the selected JSON file…',
+      });
       const raw = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.UTF8 });
-      const importResult = await new ImportService(db).importJson(raw);
-      Alert.alert('Import complete', `Imported programs: ${importResult.importedPlanIds.length}`);
-      setImportText('');
+      await runImport(raw);
     } catch (error) {
-      Alert.alert('Import failed', error instanceof Error ? error.message : 'Unknown error');
+      showOperationError('Import failed', getImportErrorMessage(error));
     }
+  };
+
+  const runImport = async (raw: string) => {
+    setOperationFeedback({
+      status: 'loading',
+      title: 'Importing programs',
+      message: 'Validating the file and saving programs…',
+    });
+    try {
+      const result = await new ImportService(db).importJson(raw);
+      const nextPlans = await new PlanRepository(db).list();
+      setPlans(nextPlans);
+      setImportText('');
+      setOperationFeedback({
+        status: 'success',
+        title: 'Import complete',
+        message: formatImportedPrograms(result.importedPlanIds.length),
+      });
+    } catch (error) {
+      showOperationError('Import failed', getImportErrorMessage(error));
+    }
+  };
+
+  const showOperationError = (title: string, message: string) => {
+    setOperationFeedback({ status: 'error', title, message });
   };
 
   const themeButtons = (['light', 'dark'] as const).map((mode: ThemeMode) => (
@@ -436,8 +506,46 @@ export const SettingsPage = () => {
           </View>
         </View>
       </Modal>
+      <OperationStatusModal
+        message={operationFeedback?.message ?? ''}
+        onClose={() => setOperationFeedback(null)}
+        status={operationFeedback?.status ?? 'loading'}
+        title={operationFeedback?.title ?? ''}
+        visible={operationFeedback !== null}
+      />
     </Screen>
   );
+};
+
+const formatImportedPrograms = (count: number): string =>
+  count === 1 ? '1 program was imported successfully.' : `${count} programs were imported successfully.`;
+
+const getImportErrorMessage = (error: unknown): string => {
+  if (error instanceof AppError) {
+    if (error.code === 'import.exerciseMissingMetadata') {
+      return `${error.message}. No data was changed.`;
+    }
+    if (error.code === 'import.invalidJson') {
+      return 'The selected file is not valid JSON. No data was changed.';
+    }
+    if (error.code === 'import.unsupportedVersion') {
+      return 'This import format version is not supported. No data was changed.';
+    }
+    if (error.code === 'import.invalidShape' || error.code === 'import.invalidPayload') {
+      return 'The file does not match the Workout Logger import format. No data was changed.';
+    }
+  }
+  return 'The file could not be imported. No data was changed. Check the file and try again.';
+};
+
+const getExportErrorMessage = (error: unknown): string => {
+  if (error instanceof AppError && error.code === 'export.sharingUnavailable') {
+    return 'The file was created, but the Android sharing window is unavailable.';
+  }
+  if (error instanceof AppError && error.code === 'export.fileStorageUnavailable') {
+    return 'File storage is unavailable on this device.';
+  }
+  return 'The file could not be created or shared. Please try again.';
 };
 
 const getTimerAlertLabel = (mode: TimerAlertMode): string => {
