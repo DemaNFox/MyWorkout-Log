@@ -19,6 +19,7 @@ import { Screen } from '@shared/ui/Screen';
 import { TextField } from '@shared/ui/TextField';
 import { useLayoutMetrics } from '@shared/ui/layout';
 import { spacing, useThemeColors } from '@shared/ui/theme';
+import type { SetEffort } from '@shared/types/domain';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutSession'>;
 const workoutScrollOffsets = new Map<string, number>();
@@ -41,6 +42,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
     durationMinutes: string;
     durationSeconds: string;
     durationInput: string;
+    effort: SetEffort;
   }>>({});
   const [setEdit, setSetEdit] = useState<{
     setId: string;
@@ -52,6 +54,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
     restMinutes: string;
     restSeconds: string;
     canEditRest: boolean;
+    effort: SetEffort;
   } | null>(null);
   const [activeRestSetId, setActiveRestSetId] = useState<string | null>(null);
   const [activeRestRemainingSec, setActiveRestRemainingSec] = useState<number | null>(null);
@@ -75,6 +78,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
             durationMinutes: String(Math.floor(durationSec / 60)),
             durationSeconds: String(durationSec % 60),
             durationInput: formatDurationInput(durationSec),
+            effort: set.effort ?? 'moderate',
           };
         });
       });
@@ -148,6 +152,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
         exercise.metricType === 'reps' ? Number(edit.weight) : 0,
         exercise.metricType === 'reps' ? Number(edit.reps) : 0,
         exercise.metricType === 'duration' ? completedDurationSec : null,
+        edit.effort,
       );
       setActiveExerciseSetId(null);
       setExerciseElapsedSec(0);
@@ -175,6 +180,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
       restMinutes: String(Math.floor(restSec / 60)),
       restSeconds: String(restSec % 60),
       canEditRest,
+      effort: set.effort ?? 'moderate',
     });
   };
 
@@ -207,6 +213,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
         edit.metricType === 'reps' ? weight : 0,
         edit.metricType === 'reps' ? reps : 0,
         edit.metricType === 'duration' ? durationSec : null,
+        edit.effort,
       );
       if (edit.canEditRest && restSec !== null) {
         if (activeRestSetId === edit.setId && currentSet?.restStartedAt && !currentSet.restFinishedAt) {
@@ -466,6 +473,17 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                       value={edits[set.id]?.durationInput ?? ''}
                     />
                   )}
+                  {!set.completed ? (
+                    <EffortPicker
+                      value={edits[set.id]?.effort ?? 'moderate'}
+                      onChange={effort =>
+                        setEdits(current => ({
+                          ...current,
+                          [set.id]: { ...(current[set.id] ?? emptySetEdit()), effort },
+                        }))
+                      }
+                    />
+                  ) : null}
                   {set.completed ? (
                     <CompletedSetSummary
                       activeRemainingSec={activeRestSetId === set.id ? activeRestRemainingSec : null}
@@ -610,6 +628,12 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                 )}
               />
             )}
+            <EffortPicker
+              value={setEdit?.effort ?? 'moderate'}
+              onChange={effort =>
+                setSetEdit(current => (current ? { ...current, effort } : current))
+              }
+            />
             {setEdit?.canEditRest ? (
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <View style={{ flex: 1 }}>
@@ -695,6 +719,11 @@ const CompletedSetSummary = ({ activeRemainingSec, exercise, onEdit, restLabel, 
             {restText}
           </Text>
           <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '700' }}>{statusText}</Text>
+          {set.effort ? (
+            <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '700' }}>
+              Effort: {set.effort}
+            </Text>
+          ) : null}
         </View>
       </View>
       <Pressable
@@ -712,6 +741,92 @@ const CompletedSetSummary = ({ activeRemainingSec, exercise, onEdit, restLabel, 
         })}>
         <MaterialIcons color={colors.secondaryText} name="edit" size={18} />
       </Pressable>
+    </View>
+  );
+};
+
+const effortOptions: Array<{ label: string; value: SetEffort }> = [
+  { label: 'Easy', value: 'easy' },
+  { label: 'Normal', value: 'moderate' },
+  { label: 'Hard', value: 'hard' },
+  { label: 'Failure', value: 'failure' },
+];
+
+const EffortPicker = ({
+  value,
+  onChange,
+}: {
+  value: SetEffort;
+  onChange: (effort: SetEffort) => void;
+}) => {
+  const colors = useThemeColors();
+  const [expanded, setExpanded] = useState(false);
+  const selectedLabel = effortOptions.find(option => option.value === value)?.label ?? 'Normal';
+
+  return (
+    <View style={{ gap: 4 }}>
+      <Pressable
+        accessibilityLabel={`Effort: ${selectedLabel}`}
+        accessibilityRole="button"
+        onPress={() => setExpanded(current => !current)}
+        style={({ pressed }) => ({
+          alignItems: 'center',
+          backgroundColor: colors.secondarySurface,
+          borderColor: colors.secondaryBorder,
+          borderRadius: 8,
+          borderWidth: 1,
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          minHeight: 42,
+          opacity: pressed ? 0.8 : 1,
+          paddingHorizontal: 12,
+        })}>
+        <Text style={{ color: colors.text, fontSize: 15, fontWeight: '700' }}>
+          Effort: {selectedLabel}
+        </Text>
+        <MaterialIcons
+          color={colors.muted}
+          name={expanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+          size={22}
+        />
+      </Pressable>
+      {expanded ? (
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            borderRadius: 8,
+            borderWidth: 1,
+            overflow: 'hidden',
+          }}>
+          {effortOptions.map(option => (
+            <Pressable
+              accessibilityRole="button"
+              key={option.value}
+              onPress={() => {
+                onChange(option.value);
+                setExpanded(false);
+              }}
+              style={({ pressed }) => ({
+                backgroundColor:
+                  option.value === value ? colors.secondarySurface : colors.surface,
+                minHeight: 40,
+                justifyContent: 'center',
+                opacity: pressed ? 0.75 : 1,
+                paddingHorizontal: 12,
+              })}>
+              <Text
+                style={{
+                  color: option.value === value ? colors.primary : colors.text,
+                  fontSize: 15,
+                  fontWeight: option.value === value ? '800' : '600',
+                }}>
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -749,6 +864,7 @@ const emptySetEdit = () => ({
   durationMinutes: '0',
   durationSeconds: '0',
   durationInput: '',
+  effort: 'moderate' as SetEffort,
 });
 
 const parseDurationParts = (value: string): { durationMinutes: string; durationSeconds: string } => {

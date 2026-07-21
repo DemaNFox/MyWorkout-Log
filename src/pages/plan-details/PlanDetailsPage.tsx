@@ -16,6 +16,8 @@ import { Screen } from '@shared/ui/Screen';
 import { TextField } from '@shared/ui/TextField';
 import { useThemeColors } from '@shared/ui/theme';
 import type { ExerciseMetricType } from '@shared/types/domain';
+import type { Exercise } from '@entities/exercise/model/types';
+import { ExerciseCatalogRepository } from '@entities/exercise/repository/exerciseCatalogRepository';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PlanDetails'>;
 
@@ -27,6 +29,7 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
   const [exercisesByDay, setExercisesByDay] = useState<Record<string, PlannedExercise[]>>({});
   const [dayName, setDayName] = useState('');
   const [exerciseName, setExerciseName] = useState('');
+  const [catalogExercises, setCatalogExercises] = useState<Exercise[]>([]);
   const [metricType, setMetricType] = useState<ExerciseMetricType>('reps');
   const [sets, setSets] = useState('3');
   const [reps, setReps] = useState('8');
@@ -57,6 +60,7 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
     setPlan(nextPlan);
     setDays(nextDays);
     setExercisesByDay(Object.fromEntries(pairs));
+    setCatalogExercises(await new ExerciseCatalogRepository(db).list());
   }, [db, route.params.planId]);
 
   useEffect(() => {
@@ -75,11 +79,25 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
 
   const addExercise = async (trainingDayId: string) => {
     try {
+      const catalogExercise = findCatalogExercise(catalogExercises, exerciseName);
+      if (!catalogExercise) {
+        Alert.alert('Cannot add exercise', 'Choose an exercise from the catalog suggestions.');
+        return;
+      }
       const targetDurationSec = Number(durationMinutes || 0) * 60 + Number(durationSeconds || 0);
       await new TrainingDayRepository(db).addExercise({
         trainingDayId,
         name: exerciseName,
+        exerciseId: catalogExercise.id,
         metricType,
+        measurementType:
+          metricType === 'duration'
+            ? 'duration'
+            : catalogExercise.defaultMeasurementType === 'duration'
+              ? 'weight_reps'
+              : catalogExercise.defaultMeasurementType,
+        weightMode:
+          metricType === 'reps' ? catalogExercise.defaultWeightMode ?? null : null,
         targetSets: Number(sets),
         targetReps: metricType === 'reps' ? Number(reps) : 0,
         targetWeight: metricType === 'reps' ? Number(weight) : 0,
@@ -213,6 +231,23 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
           ))}
           <View style={{ gap: 8 }}>
             <TextField label="Exercise" onChangeText={setExerciseName} value={exerciseName} />
+            {exerciseName.trim() && !findCatalogExercise(catalogExercises, exerciseName) ? (
+              <View style={{ gap: 6 }}>
+                {searchCatalogExercises(catalogExercises, exerciseName).slice(0, 5).map(catalogExercise => (
+                  <Button
+                    key={catalogExercise.id}
+                    onPress={() => {
+                      setExerciseName(catalogExercise.name);
+                      setMetricType(
+                        catalogExercise.defaultMeasurementType === 'duration' ? 'duration' : 'reps',
+                      );
+                    }}
+                    variant="secondary">
+                    {catalogExercise.name}
+                  </Button>
+                ))}
+              </View>
+            ) : null}
             <TextField label="Comment" onChangeText={setExerciseNote} value={exerciseNote} />
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}>
@@ -264,7 +299,7 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
                 </>
               )}
             </View>
-            <Button disabled={!exerciseName.trim()} onPress={() => addExercise(day.id)}>
+            <Button disabled={!findCatalogExercise(catalogExercises, exerciseName)} onPress={() => addExercise(day.id)}>
               Add exercise
             </Button>
           </View>
@@ -401,4 +436,25 @@ const formatExerciseDuration = (seconds: number): string => {
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   return `${minutes}:${rest.toString().padStart(2, '0')}`;
+};
+
+const normalizeExerciseName = (value: string): string =>
+  value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+
+const findCatalogExercise = (exercises: Exercise[], name: string): Exercise | undefined => {
+  const query = normalizeExerciseName(name);
+  return exercises.find(
+    exercise =>
+      normalizeExerciseName(exercise.name) === query ||
+      exercise.aliases?.some(alias => normalizeExerciseName(alias) === query),
+  );
+};
+
+const searchCatalogExercises = (exercises: Exercise[], query: string): Exercise[] => {
+  const normalizedQuery = normalizeExerciseName(query);
+  return exercises.filter(exercise =>
+    [exercise.name, ...(exercise.aliases ?? [])].some(name =>
+      normalizeExerciseName(name).includes(normalizedQuery),
+    ),
+  );
 };

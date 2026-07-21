@@ -1,5 +1,11 @@
 # Workout Logger
 
+The exercise metadata model and catalog maintenance rules are documented in
+[`docs/exercise-dictionary.md`](docs/exercise-dictionary.md).
+
+The current JSON program import format and Android import flow are documented in
+[`docs/program-import.md`](docs/program-import.md).
+
 Offline-first Android workout logger built with React Native, TypeScript, and SQLite.
 
 The app is intentionally focused on three jobs:
@@ -99,10 +105,11 @@ The exported file uses one JSON envelope. It can contain one program or many pro
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "type": "workout-programs",
   "exportedAt": "2026-06-20T12:00:00.000Z",
   "payload": {
+    "exerciseDictionary": [],
     "programs": [
       {
         "name": "Beginner Strength",
@@ -113,6 +120,10 @@ The exported file uses one JSON envelope. It can contain one program or many pro
             "exercises": [
               {
                 "name": "Squat",
+                "exerciseId": "back-squat",
+                "metricType": "reps",
+                "measurementType": "weight_reps",
+                "weightMode": "total",
                 "targetSets": 3,
                 "targetReps": 5,
                 "targetWeight": 60,
@@ -121,6 +132,10 @@ The exported file uses one JSON envelope. It can contain one program or many pro
               },
               {
                 "name": "Bench press",
+                "exerciseId": "barbell-bench-press",
+                "metricType": "reps",
+                "measurementType": "weight_reps",
+                "weightMode": "total",
                 "targetSets": 3,
                 "targetReps": 5,
                 "targetWeight": 50,
@@ -151,12 +166,14 @@ The recommended import format is the same `workout-programs` envelope used by ex
 
 Rules:
 
-- `schemaVersion` must be `1`.
+- `schemaVersion` may be `1` for legacy files; new files should use `2`.
 - `type` should be `"workout-programs"` for one or many programs.
 - Program, day, and exercise names must be non-empty.
 - `targetSets` must be greater than `0`.
 - `targetReps`, `targetWeight`, `order` must be non-negative numbers.
 - `note` can be a string or `null`.
+- `exerciseDictionary` carries referenced catalog metadata. Custom entries use `isCustom: true`
+  and are restored before programs are created.
 
 Legacy single-program imports with `type: "workout-plan"` are still accepted, but `workout-programs` is the preferred format.
 
@@ -177,7 +194,7 @@ Example shape:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "type": "program-history",
   "exportedAt": "2026-06-20T12:00:00.000Z",
   "payload": {
@@ -251,7 +268,9 @@ Example shape:
 
 Use `Settings -> Create backup`.
 
-Backup JSON is intended for full local data export. It includes settings, plans, training days, planned exercises, workout sessions, workout exercises, and workout sets.
+Backup JSON is intended for full local data export. It includes settings, the combined built-in
+and custom exercise dictionary, body metrics, plans, training days, planned exercises, workout
+sessions, workout exercises, and workout sets.
 
 ## Rest Timer
 

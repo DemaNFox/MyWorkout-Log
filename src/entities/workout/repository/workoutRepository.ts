@@ -3,7 +3,12 @@ import { nowIso } from '@shared/lib/date';
 import { AppError, assertNonNegative } from '@shared/lib/errors';
 import { createId } from '@shared/lib/id';
 import { normalizeName } from '@shared/lib/normalizeName';
-import type { ExerciseMetricType } from '@shared/types/domain';
+import type {
+  ExerciseMetricType,
+  MeasurementType,
+  SetEffort,
+  WeightMode,
+} from '@shared/types/domain';
 
 import type { WorkoutDetails, WorkoutExercise, WorkoutSession, WorkoutSet } from '../model/types';
 
@@ -18,6 +23,9 @@ type SessionRow = {
   finished_at: string | null;
   duration_sec: number | null;
   comment?: string | null;
+  feedback_energy?: 'low' | 'normal' | 'high' | null;
+  feedback_difficulty?: 'easy' | 'normal' | 'hard' | 'too_hard' | null;
+  feedback_note?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -26,9 +34,12 @@ type ExerciseRow = {
   id: string;
   workout_session_id: string;
   source_planned_exercise_id: string | null;
+  exercise_id?: string | null;
   name_snapshot: string;
   note_snapshot: string | null;
   metric_type?: ExerciseMetricType;
+  measurement_type?: MeasurementType;
+  weight_mode?: WeightMode | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -44,6 +55,7 @@ type SetRow = {
   actual_weight: number;
   actual_reps: number;
   actual_duration_sec?: number | null;
+  effort?: SetEffort | null;
   exercise_started_at?: string | null;
   completed: number;
   completed_at: string | null;
@@ -81,6 +93,14 @@ const toSession = (row: SessionRow): WorkoutSession => ({
   finishedAt: row.finished_at,
   durationSec: row.duration_sec,
   comment: row.comment ?? null,
+  feedback:
+    row.feedback_energy || row.feedback_difficulty || row.feedback_note
+      ? {
+          ...(row.feedback_energy ? { energy: row.feedback_energy } : {}),
+          ...(row.feedback_difficulty ? { difficulty: row.feedback_difficulty } : {}),
+          ...(row.feedback_note ? { note: row.feedback_note } : {}),
+        }
+      : null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -89,9 +109,13 @@ const toExercise = (row: ExerciseRow): WorkoutExercise => ({
   id: row.id,
   workoutSessionId: row.workout_session_id,
   sourcePlannedExerciseId: row.source_planned_exercise_id,
+  exerciseId: row.exercise_id ?? null,
   nameSnapshot: row.name_snapshot,
   noteSnapshot: row.note_snapshot,
   metricType: row.metric_type ?? 'reps',
+  measurementType:
+    row.measurement_type ?? (row.metric_type === 'duration' ? 'duration' : 'weight_reps'),
+  weightMode: row.weight_mode ?? (row.metric_type === 'duration' ? null : 'total'),
   order: row.sort_order,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -107,6 +131,7 @@ const toSet = (row: SetRow): WorkoutSet => ({
   actualWeight: row.actual_weight,
   actualReps: row.actual_reps,
   actualDurationSec: row.actual_duration_sec ?? null,
+  effort: row.effort ?? null,
   exerciseStartedAt: row.exercise_started_at ?? null,
   completed: row.completed === 1,
   completedAt: row.completed_at,
@@ -139,6 +164,7 @@ export class WorkoutRepository {
       finishedAt: null,
       durationSec: null,
       comment: null,
+      feedback: null,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -166,9 +192,12 @@ export class WorkoutRepository {
   async addExercise(input: {
     workoutSessionId: string;
     sourcePlannedExerciseId: string | null;
+    exerciseId?: string | null;
     nameSnapshot: string;
     noteSnapshot: string | null;
     metricType?: ExerciseMetricType;
+    measurementType?: MeasurementType;
+    weightMode?: WeightMode | null;
     order: number;
   }): Promise<WorkoutExercise> {
     const timestamp = nowIso();
@@ -176,24 +205,35 @@ export class WorkoutRepository {
       id: createId(),
       workoutSessionId: input.workoutSessionId,
       sourcePlannedExerciseId: input.sourcePlannedExerciseId,
+      exerciseId: input.exerciseId ?? null,
       nameSnapshot: input.nameSnapshot,
       noteSnapshot: input.noteSnapshot,
       metricType: input.metricType ?? 'reps',
+      measurementType:
+        input.measurementType ?? (input.metricType === 'duration' ? 'duration' : 'weight_reps'),
+      weightMode:
+        input.measurementType === 'duration' || input.metricType === 'duration'
+          ? null
+          : input.weightMode ?? 'total',
       order: input.order,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
     await this.db.execute(
       `INSERT INTO workout_exercises
-       (id, workout_session_id, source_planned_exercise_id, name_snapshot, note_snapshot, metric_type, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, workout_session_id, source_planned_exercise_id, exercise_id, name_snapshot, note_snapshot,
+        metric_type, measurement_type, weight_mode, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         exercise.id,
         exercise.workoutSessionId,
         exercise.sourcePlannedExerciseId,
+        exercise.exerciseId,
         exercise.nameSnapshot,
         exercise.noteSnapshot,
         exercise.metricType,
+        exercise.measurementType,
+        exercise.weightMode,
         exercise.order,
         exercise.createdAt,
         exercise.updatedAt,
@@ -226,6 +266,7 @@ export class WorkoutRepository {
       actualWeight: input.actualWeight,
       actualReps: input.actualReps,
       actualDurationSec: input.actualDurationSec ?? null,
+      effort: null,
       exerciseStartedAt: null,
       completed: false,
       completedAt: null,
@@ -238,8 +279,9 @@ export class WorkoutRepository {
     };
     await this.db.execute(
       `INSERT INTO workout_sets
-       (id, workout_exercise_id, set_index, target_weight, target_reps, target_duration_sec, actual_weight, actual_reps, actual_duration_sec, completed, completed_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, workout_exercise_id, set_index, target_weight, target_reps, target_duration_sec,
+        actual_weight, actual_reps, actual_duration_sec, effort, completed, completed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         set.id,
         set.workoutExerciseId,
@@ -250,6 +292,7 @@ export class WorkoutRepository {
         set.actualWeight,
         set.actualReps,
         set.actualDurationSec,
+        set.effort,
         set.completed ? 1 : 0,
         set.completedAt,
         set.createdAt,
@@ -264,6 +307,7 @@ export class WorkoutRepository {
     actualWeight: number,
     actualReps: number,
     actualDurationSec: number | null = null,
+    effort: SetEffort | null = null,
   ): Promise<void> {
     assertNonNegative(actualWeight, 'Weight cannot be negative');
     assertNonNegative(actualReps, 'Reps cannot be negative');
@@ -280,8 +324,8 @@ export class WorkoutRepository {
         throw new AppError('Complete the previous set first', 'workout.setOutOfOrder');
       }
       await this.db.execute(
-        'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, actual_duration_sec = ?, completed = ?, completed_at = ?, updated_at = ? WHERE id = ?',
-        [actualWeight, actualReps, actualDurationSec, 1, timestamp, timestamp, setId],
+        'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, actual_duration_sec = ?, effort = ?, completed = ?, completed_at = ?, updated_at = ? WHERE id = ?',
+        [actualWeight, actualReps, actualDurationSec, effort, 1, timestamp, timestamp, setId],
       );
       await this.prefillFirstPendingSet(set.workoutExerciseId);
     });
@@ -292,6 +336,7 @@ export class WorkoutRepository {
     actualWeight: number,
     actualReps: number,
     actualDurationSec: number | null = null,
+    effort?: SetEffort | null,
   ): Promise<void> {
     assertNonNegative(actualWeight, 'Weight cannot be negative');
     assertNonNegative(actualReps, 'Reps cannot be negative');
@@ -303,8 +348,8 @@ export class WorkoutRepository {
         throw new AppError('Completed set was not found', 'workout.completedSetNotFound');
       }
       await this.db.execute(
-        'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, actual_duration_sec = ?, updated_at = ? WHERE id = ? AND completed = 1',
-        [actualWeight, actualReps, actualDurationSec, timestamp, setId],
+        'UPDATE workout_sets SET actual_weight = ?, actual_reps = ?, actual_duration_sec = ?, effort = ?, updated_at = ? WHERE id = ? AND completed = 1',
+        [actualWeight, actualReps, actualDurationSec, effort ?? set.effort, timestamp, setId],
       );
       await this.prefillFirstPendingSet(set.workoutExerciseId);
     });

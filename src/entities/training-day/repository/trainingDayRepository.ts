@@ -3,9 +3,10 @@ import { nowIso } from '@shared/lib/date';
 import { assertNonEmpty, assertNonNegative, assertPositive } from '@shared/lib/errors';
 import { createId } from '@shared/lib/id';
 import { normalizeName } from '@shared/lib/normalizeName';
+import { ExerciseCatalogRepository } from '@entities/exercise/repository/exerciseCatalogRepository';
 
 import type { PlannedExercise, TrainingDay } from '../model/types';
-import type { ExerciseMetricType } from '@shared/types/domain';
+import type { ExerciseMetricType, MeasurementType, WeightMode } from '@shared/types/domain';
 
 type TrainingDayRow = {
   id: string;
@@ -20,7 +21,10 @@ type PlannedExerciseRow = {
   id: string;
   training_day_id: string;
   name: string;
+  exercise_id?: string | null;
   metric_type?: ExerciseMetricType;
+  measurement_type?: MeasurementType;
+  weight_mode?: WeightMode | null;
   target_sets: number;
   target_reps: number;
   target_weight: number;
@@ -61,7 +65,12 @@ const toExercise = (row: PlannedExerciseRow): PlannedExercise => ({
   id: row.id,
   trainingDayId: row.training_day_id,
   name: row.name,
+  exerciseId: row.exercise_id ?? null,
   metricType: row.metric_type ?? 'reps',
+  measurementType:
+    row.measurement_type ?? (row.metric_type === 'duration' ? 'duration' : 'weight_reps'),
+  weightMode:
+    row.weight_mode ?? (row.metric_type === 'duration' ? null : 'total'),
   targetSets: row.target_sets,
   targetReps: row.target_reps,
   targetWeight: row.target_weight,
@@ -107,6 +116,9 @@ export class TrainingDayRepository {
     trainingDayId: string;
     name: string;
     metricType?: ExerciseMetricType;
+    exerciseId?: string | null;
+    measurementType?: MeasurementType;
+    weightMode?: WeightMode | null;
     targetSets: number;
     targetReps: number;
     targetWeight: number;
@@ -126,11 +138,25 @@ export class TrainingDayRepository {
     const inheritedNote = relatedExercises.find(exercise => exercise.note)?.note ?? null;
     const note = requestedNote ?? inheritedNote;
     const timestamp = nowIso();
+    const catalog = new ExerciseCatalogRepository(this.db);
+    const catalogExercise = input.exerciseId
+      ? await catalog.getById(input.exerciseId)
+      : await catalog.findByName(input.name);
+    const measurementType =
+      input.measurementType ??
+      catalogExercise?.defaultMeasurementType ??
+      (input.metricType === 'duration' ? 'duration' : 'weight_reps');
     const exercise: PlannedExercise = {
       id: createId(),
       trainingDayId: input.trainingDayId,
       name: input.name.trim(),
+      exerciseId: input.exerciseId ?? catalogExercise?.id ?? null,
       metricType: input.metricType ?? 'reps',
+      measurementType,
+      weightMode:
+        measurementType === 'weight_reps'
+          ? input.weightMode ?? catalogExercise?.defaultWeightMode ?? 'total'
+          : null,
       targetSets: input.targetSets,
       targetReps: input.targetReps,
       targetWeight: input.targetWeight,
@@ -143,13 +169,17 @@ export class TrainingDayRepository {
     await this.db.transaction(async () => {
       await this.db.execute(
         `INSERT INTO planned_exercises
-         (id, training_day_id, name, metric_type, target_sets, target_reps, target_weight, target_duration_sec, note, sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, training_day_id, name, exercise_id, metric_type, measurement_type, weight_mode,
+          target_sets, target_reps, target_weight, target_duration_sec, note, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           exercise.id,
           exercise.trainingDayId,
           exercise.name,
+          exercise.exerciseId,
           exercise.metricType,
+          exercise.measurementType,
+          exercise.weightMode,
           exercise.targetSets,
           exercise.targetReps,
           exercise.targetWeight,

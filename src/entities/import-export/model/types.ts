@@ -5,9 +5,12 @@ import type { PlannedExercise, TrainingDay } from '@entities/training-day/model/
 import type { WorkoutExercise, WorkoutSession, WorkoutSet } from '@entities/workout/model/types';
 import type { UserSettings } from '@entities/settings/model/types';
 import type { ExerciseMetricType } from '@shared/types/domain';
+import type { MeasurementType, SetEffort, WeightMode } from '@shared/types/domain';
+import type { Exercise } from '@entities/exercise/model/types';
+import type { BodyMetricEntry } from '@entities/body-metric/model/types';
 
 export interface ExportEnvelope<TPayload, TType extends ImportExportType> {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   type: TType;
   exportedAt: string;
   payload: TPayload;
@@ -20,7 +23,10 @@ export interface WorkoutPlanPayload {
     order: number;
     exercises: Array<{
       name: string;
+      exerciseId?: string | null;
       metricType?: ExerciseMetricType;
+      measurementType?: MeasurementType;
+      weightMode?: WeightMode | null;
       targetSets: number;
       targetReps: number;
       targetWeight: number;
@@ -33,9 +39,12 @@ export interface WorkoutPlanPayload {
 
 export interface WorkoutProgramsPayload {
   programs: WorkoutPlanPayload[];
+  exerciseDictionary?: Exercise[];
 }
 
 export interface FullBackupPayload {
+  exerciseDictionary: Exercise[];
+  bodyMetrics: BodyMetricEntry[];
   settings: Pick<
     UserSettings,
     | 'weightUnit'
@@ -71,8 +80,11 @@ export interface ProgramHistoryPayload {
       exercises: Array<{
         id: string;
         name: string;
+        exerciseId: string | null;
         note: string | null;
         metricType: ExerciseMetricType;
+        measurementType: MeasurementType;
+        weightMode: WeightMode | null;
         order: number;
         sets: Array<{
           index: number;
@@ -82,6 +94,7 @@ export interface ProgramHistoryPayload {
           actualWeight: number;
           actualReps: number;
           actualDurationSec: number | null;
+          effort: SetEffort | null;
           exerciseStartedAt: string | null;
           completed: boolean;
           completedAt: string | null;

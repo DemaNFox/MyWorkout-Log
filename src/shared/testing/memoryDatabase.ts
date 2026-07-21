@@ -133,6 +133,9 @@ export class MemoryDatabase implements Database {
     if (query.includes('where workout_exercise_id = ?')) {
       rows = rows.filter(row => row.workout_exercise_id === params[0]);
     }
+    if (query.includes('where exercise_id = ?')) {
+      rows = rows.filter(row => row.exercise_id === params[0]);
+    }
     if (query.includes('where source_plan_id = ?')) {
       rows = rows.filter(row => row.source_plan_id === params[0]);
     }
@@ -141,6 +144,9 @@ export class MemoryDatabase implements Database {
     }
     if (query.includes('order by set_index')) {
       rows.sort((a, b) => Number(a.set_index) - Number(b.set_index));
+    }
+    if (query.includes('order by name')) {
+      rows.sort((a, b) => String(a.name).localeCompare(String(b.name)));
     }
     if (query.includes('order by started_at desc') || query.includes('order by created_at desc')) {
       rows.sort((a, b) => String(b.started_at ?? b.created_at).localeCompare(String(a.started_at ?? a.created_at)));

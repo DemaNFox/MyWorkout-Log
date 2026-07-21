@@ -42,9 +42,12 @@ export class StartWorkoutService {
       const workoutExercise = await this.workouts.addExercise({
         workoutSessionId: session.id,
         sourcePlannedExerciseId: exercise.id,
+        exerciseId: exercise.exerciseId,
         nameSnapshot: exercise.name,
         noteSnapshot: exercise.note,
         metricType: exercise.metricType,
+        measurementType: exercise.measurementType,
+        weightMode: exercise.weightMode,
         order: exercise.order,
       });
       for (let setIndex = 1; setIndex <= exercise.targetSets; setIndex += 1) {

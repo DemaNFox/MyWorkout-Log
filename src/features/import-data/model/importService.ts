@@ -1,6 +1,7 @@
 import { parseImportEnvelope } from '@entities/import-export/lib/validateImportEnvelope';
 import { PlanRepository } from '@entities/plan/repository/planRepository';
 import type { WorkoutPlanPayload } from '@entities/import-export/model/types';
+import { ExerciseCatalogRepository } from '@entities/exercise/repository/exerciseCatalogRepository';
 import { TrainingDayRepository } from '@entities/training-day/repository/trainingDayRepository';
 import type { Database } from '@shared/db/types';
 
@@ -17,6 +18,10 @@ export class ImportService {
       return this.importPlans([envelope.payload]);
     }
     if (envelope.type === 'workout-programs') {
+      const catalog = new ExerciseCatalogRepository(this.db);
+      for (const exercise of envelope.payload.exerciseDictionary ?? []) {
+        await catalog.importCustom(exercise);
+      }
       return this.importPlans(envelope.payload.programs);
     }
     return { importedPlanIds: [] };
@@ -39,7 +44,12 @@ export class ImportService {
             await days.addExercise({
               trainingDayId: day.id,
               name: exercise.name,
+              exerciseId: exercise.exerciseId ?? null,
               metricType: exercise.metricType ?? 'reps',
+              ...(exercise.measurementType
+                ? { measurementType: exercise.measurementType }
+                : {}),
+              weightMode: exercise.weightMode ?? null,
               targetSets: exercise.targetSets,
               targetReps: exercise.targetReps,
               targetWeight: exercise.targetWeight,

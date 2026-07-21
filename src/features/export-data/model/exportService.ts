@@ -16,6 +16,8 @@ import type { ExerciseHistoryRow } from '@entities/analytics/model/types';
 import type { Database } from '@shared/db/types';
 import { nowIso } from '@shared/lib/date';
 import { AppError } from '@shared/lib/errors';
+import { ExerciseCatalogRepository } from '@entities/exercise/repository/exerciseCatalogRepository';
+import { BodyMetricRepository } from '@entities/body-metric/repository/bodyMetricRepository';
 
 export class ExportService {
   constructor(private readonly db: Database) {}
@@ -24,7 +26,7 @@ export class ExportService {
     const payload = await this.getWorkoutPlanPayload(planId);
 
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       type: 'workout-plan',
       exportedAt: nowIso(),
       payload,
@@ -36,12 +38,25 @@ export class ExportService {
       throw new AppError('Select at least one program', 'export.noProgramsSelected');
     }
 
+    const programs = await Promise.all(planIds.map(planId => this.getWorkoutPlanPayload(planId)));
+    const exerciseIds = new Set(
+      programs.flatMap(program =>
+        program.days.flatMap(day =>
+          day.exercises.flatMap(exercise => (exercise.exerciseId ? [exercise.exerciseId] : [])),
+        ),
+      ),
+    );
+    const exerciseDictionary = (await new ExerciseCatalogRepository(this.db).list()).filter(
+      exercise => exerciseIds.has(exercise.id),
+    );
+
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       type: 'workout-programs',
       exportedAt: nowIso(),
       payload: {
-        programs: await Promise.all(planIds.map(planId => this.getWorkoutPlanPayload(planId))),
+        programs,
+        exerciseDictionary,
       },
     };
   }
@@ -62,7 +77,10 @@ export class ExportService {
           order: day.order,
           exercises: (await daysRepo.listExercises(day.id)).map(exercise => ({
             name: exercise.name,
+            exerciseId: exercise.exerciseId,
             metricType: exercise.metricType,
+            measurementType: exercise.measurementType,
+            weightMode: exercise.weightMode,
             targetSets: exercise.targetSets,
             targetReps: exercise.targetReps,
             targetWeight: exercise.targetWeight,
@@ -93,11 +111,13 @@ export class ExportService {
     ).flat();
 
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       type: 'full-backup',
       exportedAt: nowIso(),
       app: { name: 'Workout Logger', version: '1.1.0' },
       payload: {
+        exerciseDictionary: await new ExerciseCatalogRepository(this.db).list(),
+        bodyMetrics: await new BodyMetricRepository(this.db).list(),
         settings: {
           weightUnit: settings.weightUnit,
           defaultRestSec: settings.defaultRestSec,
@@ -156,8 +176,11 @@ export class ExportService {
               (await workoutRepo.listExercises(session.id)).map(async exercise => ({
                 id: exercise.id,
                 name: exercise.nameSnapshot,
+                exerciseId: exercise.exerciseId,
                 note: exercise.noteSnapshot,
                 metricType: exercise.metricType,
+                measurementType: exercise.measurementType,
+                weightMode: exercise.weightMode,
                 order: exercise.order,
                 sets: (await workoutRepo.listSets(exercise.id)).map(set => ({
                   index: set.setIndex,
@@ -167,6 +190,7 @@ export class ExportService {
                   actualWeight: set.actualWeight,
                   actualReps: set.actualReps,
                   actualDurationSec: set.actualDurationSec,
+                  effort: set.effort,
                   exerciseStartedAt: set.exerciseStartedAt,
                   completed: set.completed,
                   completedAt: set.completedAt,
@@ -193,7 +217,7 @@ export class ExportService {
     );
 
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       type: 'program-history',
       exportedAt: nowIso(),
       payload: { programs },
@@ -206,7 +230,10 @@ type ProgramHistorySession = ProgramHistoryPayload['programs'][number]['sessions
 const buildExerciseProgress = (
   sessions: ProgramHistorySession[],
 ): ProgramHistoryPayload['programs'][number]['exerciseProgress'] => {
-  const byExercise = new Map<string, Array<Omit<ExerciseHistoryRow, 'trend'>>>();
+  const byExercise = new Map<
+    string,
+    { name: string; rows: Array<Omit<ExerciseHistoryRow, 'trend'>> }
+  >();
 
   sessions.forEach(session => {
     session.exercises.forEach(exercise => {
@@ -220,22 +247,28 @@ const buildExerciseProgress = (
         return;
       }
 
-      byExercise.set(exercise.name, [
-        ...(byExercise.get(exercise.name) ?? []),
-        {
+      const key = exercise.exerciseId ?? exercise.name;
+      const existing = byExercise.get(key);
+      byExercise.set(key, {
+        name: existing?.name ?? exercise.name,
+        rows: [
+          ...(existing?.rows ?? []),
+          {
           workoutSessionId: session.id,
           workoutExerciseId: exercise.id,
           date: session.date ?? '',
           ...performance,
           completedSets: completedSets.length,
-        },
-      ]);
+          },
+        ],
+      });
     });
   });
 
   return [...byExercise.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([exerciseName, rows]) => {
+    .sort(([, left], [, right]) => left.name.localeCompare(right.name))
+    .map(([, exercise]) => {
+      const { name: exerciseName, rows } = exercise;
       const history = withTrends(rows.sort((left, right) => left.date.localeCompare(right.date)));
 
       return {

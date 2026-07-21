@@ -10,6 +10,7 @@ import { HistoryPage } from '@pages/history/HistoryPage';
 import { HomePage } from '@pages/home/HomePage';
 import { PlanDetailsPage } from '@pages/plan-details/PlanDetailsPage';
 import { PlansPage } from '@pages/plans/PlansPage';
+import { ExercisesPage } from '@pages/exercises/ExercisesPage';
 import { SettingsPage } from '@pages/settings/SettingsPage';
 import { WorkoutDetailsPage } from '@pages/workout-details/WorkoutDetailsPage';
 import { WorkoutSessionPage } from '@pages/workout-session/WorkoutSessionPage';
@@ -25,6 +26,7 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 const tabIcons: Record<keyof MainTabParamList, { active: IoniconName; inactive: IoniconName }> = {
   Home: { active: 'today', inactive: 'today-outline' },
   Plans: { active: 'barbell', inactive: 'barbell-outline' },
+  Exercises: { active: 'fitness', inactive: 'fitness-outline' },
   History: { active: 'time', inactive: 'time-outline' },
   Analytics: { active: 'analytics', inactive: 'analytics-outline' },
   Settings: { active: 'settings', inactive: 'settings-outline' },
@@ -52,6 +54,7 @@ const MainTabs = () => {
       })}>
       <Tabs.Screen name="Home" component={HomePage} options={{ title: 'Today' }} />
       <Tabs.Screen name="Plans" component={PlansPage} />
+      <Tabs.Screen name="Exercises" component={ExercisesPage} />
       <Tabs.Screen name="History" component={HistoryPage} />
       <Tabs.Screen name="Analytics" component={AnalyticsPage} />
       <Tabs.Screen name="Settings" component={SettingsPage} />

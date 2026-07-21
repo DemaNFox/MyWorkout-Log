@@ -28,6 +28,16 @@ describe('ExportService', () => {
     const exported = await new ExportService(db).exportPrograms([firstPlan.id, secondPlan.id]);
 
     expect(exported.type).toBe('workout-programs');
+    expect(exported.schemaVersion).toBe(2);
+    expect(exported.payload.exerciseDictionary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'barbell-bench-press',
+          equipmentType: 'barbell',
+          defaultWeightMode: 'total',
+        }),
+      ]),
+    );
     expect(exported.payload.programs).toEqual([
       {
         name: 'Strength',
@@ -37,11 +47,14 @@ describe('ExportService', () => {
             order: 1,
             exercises: [
               {
+                exerciseId: 'barbell-bench-press',
+                measurementType: 'weight_reps',
                 metricType: 'reps',
                 name: 'Bench Press',
                 targetSets: 4,
                 targetReps: 5,
                 targetWeight: 80,
+                weightMode: 'total',
                 targetDurationSec: null,
                 note: null,
                 order: 1,

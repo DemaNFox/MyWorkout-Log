@@ -1,4 +1,5 @@
 import type { Database } from '@shared/db/types';
+import { findExerciseByName, getExerciseById } from '@entities/exercise/model/exerciseCatalog';
 
 import { withTrends } from '../lib/calculateExerciseDynamics';
 import { selectExercisePerformance } from '../lib/selectExercisePerformance';
@@ -25,8 +26,8 @@ export class AnalyticsRepository {
       return [];
     }
 
-    const rows = await this.db.getAll<{ name_snapshot: string }>(
-      `SELECT DISTINCT we.name_snapshot
+    const rows = await this.db.getAll<{ exercise_id: string | null; name_snapshot: string }>(
+      `SELECT we.exercise_id, MAX(we.name_snapshot) AS name_snapshot
        FROM workout_exercises we
        JOIN workout_sessions ws ON ws.id = we.workout_session_id
        JOIN workout_sets wset ON wset.workout_exercise_id = we.id
@@ -36,10 +37,11 @@ export class AnalyticsRepository {
            we.source_planned_exercise_id IS NULL
            OR EXISTS (SELECT 1 FROM planned_exercises pe WHERE pe.id = we.source_planned_exercise_id)
          )
-       ORDER BY we.name_snapshot ASC`,
+       GROUP BY COALESCE(we.exercise_id, we.name_snapshot)
+       ORDER BY name_snapshot ASC`,
       [activePlanId],
     );
-    return rows.map(row => row.name_snapshot);
+    return rows.map(row => (row.exercise_id ? getExerciseById(row.exercise_id)?.name : undefined) ?? row.name_snapshot);
   }
 
   async getExerciseHistory(exerciseName: string): Promise<ExerciseHistoryRow[]> {
@@ -48,6 +50,7 @@ export class AnalyticsRepository {
       return [];
     }
 
+    const exerciseId = findExerciseByName(exerciseName)?.id ?? null;
     const rows = await this.db.getAll<HistorySqlRow>(
       `SELECT
          ws.id as workoutSessionId,
@@ -58,7 +61,7 @@ export class AnalyticsRepository {
        FROM workout_sessions ws
        JOIN workout_exercises we ON we.workout_session_id = ws.id
        JOIN workout_sets wset ON wset.workout_exercise_id = we.id
-       WHERE we.name_snapshot = ?
+       WHERE ((? IS NOT NULL AND we.exercise_id = ?) OR (we.exercise_id IS NULL AND we.name_snapshot = ?))
          AND wset.completed = 1
          AND ws.source_plan_id = ?
          AND (
@@ -66,7 +69,7 @@ export class AnalyticsRepository {
            OR EXISTS (SELECT 1 FROM planned_exercises pe WHERE pe.id = we.source_planned_exercise_id)
          )
        ORDER BY ws.started_at ASC, wset.set_index ASC`,
-      [exerciseName, activePlanId],
+      [exerciseId, exerciseId, exerciseName, activePlanId],
     );
     const grouped = new Map<string, { date: string; sets: Array<{ actualWeight: number; actualReps: number }> }>();
     rows.forEach(row => {

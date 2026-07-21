@@ -508,4 +508,38 @@ describe('WorkoutRepository', () => {
     await expect(workouts.getSession(session.id)).resolves.toEqual(firstFinished);
     expect(firstFinished?.comment).toBe('Strong session');
   });
+
+  it('stores effort on each completed set', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    const workouts = new WorkoutRepository(db);
+    const session = await workouts.createSession({
+      sourcePlanId: null,
+      sourceTrainingDayId: null,
+      planNameSnapshot: 'Plan',
+      trainingDayNameSnapshot: 'Day',
+    });
+    const exercise = await workouts.addExercise({
+      workoutSessionId: session.id,
+      sourcePlannedExerciseId: null,
+      exerciseId: 'barbell-bench-press',
+      nameSnapshot: 'Bench Press',
+      noteSnapshot: null,
+      measurementType: 'weight_reps',
+      weightMode: 'total',
+      order: 1,
+    });
+    const set = await workouts.addSet({
+      workoutExerciseId: exercise.id,
+      setIndex: 1,
+      targetWeight: 80,
+      targetReps: 5,
+      actualWeight: 80,
+      actualReps: 5,
+    });
+
+    await workouts.completeSet(set.id, 80, 5, null, 'hard');
+
+    await expect(workouts.getSet(set.id)).resolves.toMatchObject({ effort: 'hard' });
+  });
 });

@@ -8,6 +8,7 @@ export type RootStackParamList = {
 export type MainTabParamList = {
   Home: undefined;
   Plans: undefined;
+  Exercises: undefined;
   History: undefined;
   Analytics: undefined;
   Settings: undefined;

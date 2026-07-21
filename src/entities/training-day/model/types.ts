@@ -1,4 +1,4 @@
-import type { ExerciseMetricType } from '@shared/types/domain';
+import type { ExerciseMetricType, MeasurementType, WeightMode } from '@shared/types/domain';
 
 export interface TrainingDay {
   id: string;
@@ -13,7 +13,10 @@ export interface PlannedExercise {
   id: string;
   trainingDayId: string;
   name: string;
+  exerciseId: string | null;
   metricType: ExerciseMetricType;
+  measurementType: MeasurementType;
+  weightMode: WeightMode | null;
   targetSets: number;
   targetReps: number;
   targetWeight: number;

@@ -133,4 +133,35 @@ describe('parseImportEnvelope', () => {
     expect(parseImportEnvelope(JSON.stringify(createEnvelope(60))).type).toBe('workout-plan');
     expect(() => parseImportEnvelope(JSON.stringify(createEnvelope()))).toThrow(AppError);
   });
+
+  it('rejects invalid v2 measurement metadata', () => {
+    expect(() =>
+      parseImportEnvelope(
+        JSON.stringify({
+          schemaVersion: 2,
+          type: 'workout-plan',
+          exportedAt: '2026-07-21T12:00:00.000Z',
+          payload: {
+            name: 'Program',
+            days: [{
+              name: 'Day',
+              order: 1,
+              exercises: [{
+                name: 'Plank',
+                exerciseId: 'plank',
+                metricType: 'duration',
+                measurementType: 'duration',
+                weightMode: 'per_dumbbell',
+                targetSets: 1,
+                targetReps: 0,
+                targetWeight: 0,
+                targetDurationSec: 60,
+                order: 1,
+              }],
+            }],
+          },
+        }),
+      ),
+    ).toThrow(AppError);
+  });
 });

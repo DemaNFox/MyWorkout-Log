@@ -10,6 +10,8 @@ import { restTimerPresetsMigration } from './007_rest_timer_presets';
 import { timedExercisesMigration } from './008_timed_exercises';
 import { exerciseTimerMigration } from './009_exercise_timer';
 import { workoutSessionCommentMigration } from './010_workout_session_comment';
+import { exerciseDataModelMigration } from './011_exercise_data_model';
+import { customExercisesMigration } from './012_custom_exercises';
 
 const migrations = [
   initialSchemaMigration,
@@ -22,6 +24,8 @@ const migrations = [
   timedExercisesMigration,
   exerciseTimerMigration,
   workoutSessionCommentMigration,
+  exerciseDataModelMigration,
+  customExercisesMigration,
 ] as const;
 
 type MigrationRow = { id: number };
