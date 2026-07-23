@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { useDatabase } from '@app/providers/DatabaseProvider';
 import { getTrendColor } from '@entities/analytics/lib/getTrendColor';
-import type { ExerciseHistoryRow } from '@entities/analytics/model/types';
+import type { AnalyticsExercise, ExerciseHistoryRow } from '@entities/analytics/model/types';
 import { AnalyticsRepository } from '@entities/analytics/repository/analyticsRepository';
 import { ExerciseProgressChart } from '@widgets/exercise-progress-chart/ExerciseProgressChart';
 import { Card } from '@shared/ui/Card';
@@ -15,9 +15,11 @@ import { useThemeColors } from '@shared/ui/theme';
 export const AnalyticsPage = () => {
   const db = useDatabase();
   const colors = useThemeColors();
-  const [names, setNames] = useState<string[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [exercises, setExercises] = useState<AnalyticsExercise[]>([]);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [history, setHistory] = useState<ExerciseHistoryRow[]>([]);
+  const selected =
+    exercises.find(exercise => getExerciseKey(exercise) === selectedKey) ?? null;
 
   const best = useMemo(
     () =>
@@ -55,12 +57,15 @@ export const AnalyticsPage = () => {
 
   const load = useCallback(async () => {
     const repository = new AnalyticsRepository(db);
-    const nextNames = await repository.listExerciseNames();
-    const nextSelected = selected && nextNames.includes(selected) ? selected : nextNames[0] ?? null;
-    setNames(nextNames);
-    setSelected(nextSelected);
+    const nextExercises = await repository.listExercises();
+    const nextSelected =
+      nextExercises.find(exercise => getExerciseKey(exercise) === selectedKey) ??
+      nextExercises[0] ??
+      null;
+    setExercises(nextExercises);
+    setSelectedKey(getExerciseKey(nextSelected));
     setHistory(nextSelected ? await repository.getExerciseHistory(nextSelected) : []);
-  }, [db, selected]);
+  }, [db, selectedKey]);
 
   useFocusEffect(
     useCallback(() => {
@@ -68,26 +73,27 @@ export const AnalyticsPage = () => {
     }, [load]),
   );
 
-  const chooseExercise = async (name: string) => {
-    setSelected(name);
-    setHistory(await new AnalyticsRepository(db).getExerciseHistory(name));
+  const chooseExercise = async (exercise: AnalyticsExercise) => {
+    setSelectedKey(getExerciseKey(exercise));
+    setHistory(await new AnalyticsRepository(db).getExerciseHistory(exercise));
   };
 
   return (
     <Screen title="Analytics">
       <Card>
         <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Completed exercises</Text>
-        {names.length === 0 ? (
+        {exercises.length === 0 ? (
           <EmptyState text="Complete at least one set in a workout to see exercise analytics." />
         ) : null}
         <View style={{ gap: 8 }}>
-          {names.map(name => {
-            const isSelected = selected === name;
+          {exercises.map(exercise => {
+            const key = getExerciseKey(exercise);
+            const isSelected = selectedKey === key;
 
             return (
             <Pressable
-              key={name}
-              onPress={() => void chooseExercise(name)}
+              key={key}
+              onPress={() => void chooseExercise(exercise)}
               style={({ pressed }) => ({
                 minHeight: 44,
                 justifyContent: 'center',
@@ -105,7 +111,7 @@ export const AnalyticsPage = () => {
                   fontSize: 16,
                   fontWeight: '800',
                 }}>
-                {name}
+                {exercise.name}
               </Text>
             </Pressable>
             );
@@ -125,7 +131,7 @@ export const AnalyticsPage = () => {
             </Text>
           ) : null}
           <Text style={{ color: colors.muted }}>
-            {history.length} workout{history.length === 1 ? '' : 's'} logged for {selected}
+            {history.length} workout{history.length === 1 ? '' : 's'} logged for {selected.name}
           </Text>
         </Card>
       ) : null}
@@ -172,3 +178,6 @@ export const AnalyticsPage = () => {
     </Screen>
   );
 };
+
+const getExerciseKey = (exercise: AnalyticsExercise | null): string | null =>
+  exercise ? exercise.exerciseId ?? `name:${exercise.name}` : null;

@@ -1,9 +1,13 @@
 import type { Database } from '@shared/db/types';
-import { findExerciseByName, getExerciseById } from '@entities/exercise/model/exerciseCatalog';
+import { getExerciseById } from '@entities/exercise/model/exerciseCatalog';
 
 import { withTrends } from '../lib/calculateExerciseDynamics';
 import { selectExercisePerformance } from '../lib/selectExercisePerformance';
-import type { ExerciseHistoryRow, ExerciseProgressPoint } from '../model/types';
+import type {
+  AnalyticsExercise,
+  ExerciseHistoryRow,
+  ExerciseProgressPoint,
+} from '../model/types';
 
 type HistorySqlRow = {
   workoutSessionId: string;
@@ -20,7 +24,7 @@ type ActivePlanRow = {
 export class AnalyticsRepository {
   constructor(private readonly db: Database) {}
 
-  async listExerciseNames(): Promise<string[]> {
+  async listExercises(): Promise<AnalyticsExercise[]> {
     const activePlanId = await this.getActivePlanId();
     if (!activePlanId) {
       return [];
@@ -41,16 +45,18 @@ export class AnalyticsRepository {
        ORDER BY name_snapshot ASC`,
       [activePlanId],
     );
-    return rows.map(row => (row.exercise_id ? getExerciseById(row.exercise_id)?.name : undefined) ?? row.name_snapshot);
+    return rows.map(row => ({
+      exerciseId: row.exercise_id,
+      name: (row.exercise_id ? getExerciseById(row.exercise_id)?.name : undefined) ?? row.name_snapshot,
+    }));
   }
 
-  async getExerciseHistory(exerciseName: string): Promise<ExerciseHistoryRow[]> {
+  async getExerciseHistory(exercise: AnalyticsExercise): Promise<ExerciseHistoryRow[]> {
     const activePlanId = await this.getActivePlanId();
     if (!activePlanId) {
       return [];
     }
 
-    const exerciseId = findExerciseByName(exerciseName)?.id ?? null;
     const rows = await this.db.getAll<HistorySqlRow>(
       `SELECT
          ws.id as workoutSessionId,
@@ -69,7 +75,7 @@ export class AnalyticsRepository {
            OR EXISTS (SELECT 1 FROM planned_exercises pe WHERE pe.id = we.source_planned_exercise_id)
          )
        ORDER BY ws.started_at ASC, wset.set_index ASC`,
-      [exerciseId, exerciseId, exerciseName, activePlanId],
+      [exercise.exerciseId, exercise.exerciseId, exercise.name, activePlanId],
     );
     const grouped = new Map<string, { date: string; sets: Array<{ actualWeight: number; actualReps: number }> }>();
     rows.forEach(row => {
@@ -101,8 +107,8 @@ export class AnalyticsRepository {
     );
   }
 
-  async getProgress(exerciseName: string): Promise<ExerciseProgressPoint[]> {
-    const history = await this.getExerciseHistory(exerciseName);
+  async getProgress(exercise: AnalyticsExercise): Promise<ExerciseProgressPoint[]> {
+    const history = await this.getExerciseHistory(exercise);
     return history.map(row => ({
       date: row.date,
       weight: row.bestWeight,

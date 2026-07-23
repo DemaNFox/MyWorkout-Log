@@ -114,7 +114,7 @@ export class ExportService {
       schemaVersion: 2,
       type: 'full-backup',
       exportedAt: nowIso(),
-      app: { name: 'Workout Logger', version: '1.5.0' },
+      app: { name: 'Workout Logger', version: '1.5.1' },
       payload: {
         exerciseDictionary: await new ExerciseCatalogRepository(this.db).list(),
         bodyMetrics: await new BodyMetricRepository(this.db).list(),
