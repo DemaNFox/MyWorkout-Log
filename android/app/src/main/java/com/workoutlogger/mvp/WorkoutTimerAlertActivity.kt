@@ -63,7 +63,7 @@ class WorkoutTimerAlertActivity : Activity() {
 
       addView(
         TextView(this@WorkoutTimerAlertActivity).apply {
-          text = "Rest timer finished"
+          text = "Workout timer finished"
           textSize = 24f
           setTextColor(Color.rgb(24, 24, 27))
           gravity = Gravity.CENTER

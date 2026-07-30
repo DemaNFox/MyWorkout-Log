@@ -58,6 +58,7 @@ export const RestTimer = ({
   const onTargetChangedRef = useRef(onTargetChanged);
   const onTickRef = useRef(onTick);
   const alertModeRef = useRef(alertMode);
+  const backgroundedRef = useRef(false);
   const completedRef = useRef(false);
   const runningStartedAtMsRef = useRef<number | null>(null);
   const soundUriRef = useRef(soundUri);
@@ -130,14 +131,16 @@ export const RestTimer = ({
       setRunning(true);
       return;
     }
-    completeTimer(resumeTargetSec);
+    void isNativeTimerAlertActive().then(isActive => {
+      completeTimer(resumeTargetSec, isActive);
+    });
   }, [resumeStartedAt, resumeTargetSec]);
 
   useEffect(() => {
     if (!running) {
       return undefined;
     }
-    const syncRemaining = () => {
+    const syncRemaining = (showAlert = !backgroundedRef.current) => {
       const startedAtMs = runningStartedAtMsRef.current;
       const targetSec = targetSecRef.current;
       if (!startedAtMs) {
@@ -150,20 +153,23 @@ export const RestTimer = ({
       if (nextRemainingSec > 0 || completedRef.current) {
         return;
       }
-      completeTimer(targetSec);
+      completeTimer(targetSec, showAlert);
     };
 
     syncRemaining();
     const intervalId = setInterval(syncRemaining, 1000);
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
-        syncRemaining();
         void isNativeTimerAlertActive().then(isActive => {
+          syncRemaining(isActive);
           if (!isActive) {
             setAlertVisible(false);
           }
+          backgroundedRef.current = false;
         });
+        return;
       }
+      backgroundedRef.current = true;
     });
 
     return () => {
@@ -172,7 +178,7 @@ export const RestTimer = ({
     };
   }, [running]);
 
-  const completeTimer = (targetSec: number) => {
+  const completeTimer = (targetSec: number, showAlert = true) => {
     if (completedRef.current) {
       return;
     }
@@ -180,7 +186,7 @@ export const RestTimer = ({
     setRunning(false);
     setRemainingSec(0);
     onTickRef.current?.(0);
-    if (alertModeRef.current !== 'silent') {
+    if (showAlert && alertModeRef.current !== 'silent') {
       setAlertVisible(true);
     }
     onCompleteRef.current?.(targetSec);

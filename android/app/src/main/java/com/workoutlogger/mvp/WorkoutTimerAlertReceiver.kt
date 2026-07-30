@@ -1,5 +1,6 @@
 package com.workoutlogger.mvp
 
+import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -21,15 +22,23 @@ class WorkoutTimerAlertReceiver : BroadcastReceiver() {
       soundUri = intent.getStringExtra(EXTRA_SOUND_URI),
       volume = intent.getDoubleExtra(EXTRA_VOLUME, 1.0),
     )
-    runCatching {
-      context.startActivity(
-        Intent(context, WorkoutTimerAlertActivity::class.java).apply {
-          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-          addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-          addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        },
-      )
+    if (!isAppInForeground()) {
+      runCatching {
+        context.startActivity(
+          Intent(context, WorkoutTimerAlertActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+          },
+        )
+      }
     }
+  }
+
+  private fun isAppInForeground(): Boolean {
+    val processState = ActivityManager.RunningAppProcessInfo()
+    ActivityManager.getMyMemoryState(processState)
+    return processState.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
   }
 
   companion object {

@@ -72,8 +72,8 @@ class WorkoutTimerAlertService : Service() {
 
     return NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(R.mipmap.ic_launcher)
-      .setContentTitle("Rest finished")
-      .setContentText("Time for the next set.")
+      .setContentTitle("Timer finished")
+      .setContentText("Open Workout Logger to continue.")
       .setCategory(NotificationCompat.CATEGORY_ALARM)
       .setPriority(NotificationCompat.PRIORITY_MAX)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -150,8 +150,8 @@ class WorkoutTimerAlertService : Service() {
     }
     val notificationManager = getSystemService(NotificationManager::class.java)
     notificationManager.createNotificationChannel(
-      NotificationChannel(CHANNEL_ID, "Active rest timer alert", NotificationManager.IMPORTANCE_HIGH).apply {
-        description = "Continuous alert when workout rest is finished"
+      NotificationChannel(CHANNEL_ID, "Active workout timer alert", NotificationManager.IMPORTANCE_HIGH).apply {
+        description = "Continuous alert when a workout timer is finished"
         lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         setSound(null, null)
         enableVibration(false)

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Alert, AppState, Modal, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -8,10 +8,18 @@ import { useDatabase } from '@app/providers/DatabaseProvider';
 import { getRestLabel } from '@entities/workout/lib/getRestLabel';
 import type { WorkoutDetails, WorkoutExercise, WorkoutSet } from '@entities/workout/model/types';
 import { WorkoutRepository } from '@entities/workout/repository/workoutRepository';
+import type { TimerAlertMode } from '@entities/settings/model/types';
+import { SettingsRepository } from '@entities/settings/repository/settingsRepository';
 import { RestTimer } from '@features/rest-timer/ui/RestTimer';
 import { ExerciseNoteField } from '@features/workout-note/ui/ExerciseNoteField';
 import { formatDuration } from '@shared/lib/date';
-import { stopTimerSound } from '@shared/lib/timerAlert';
+import {
+  cancelScheduledTimerAlert,
+  isNativeTimerAlertActive,
+  requestTimerAlertPermission,
+  scheduleTimerAlert,
+  stopTimerSound,
+} from '@shared/lib/timerAlert';
 import { Button } from '@shared/ui/Button';
 import { Card } from '@shared/ui/Card';
 import { EmptyState } from '@shared/ui/EmptyState';
@@ -31,6 +39,9 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   const scrollRef = useRef<ScrollView | null>(null);
   const exerciseOffsetsRef = useRef(new Map<string, number>());
   const restorePendingRef = useRef(true);
+  const exerciseTimerFinishingRef = useRef(false);
+  const exerciseTimerWasBackgroundedRef = useRef(false);
+  const exerciseTimerAlertModeRef = useRef<TimerAlertMode>('vibrate');
   const [details, setDetails] = useState<WorkoutDetails | null>(null);
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
   const [workoutComment, setWorkoutComment] = useState('');
@@ -63,6 +74,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   const [restTimerStartKey, setRestTimerStartKey] = useState(0);
   const [activeExerciseSetId, setActiveExerciseSetId] = useState<string | null>(null);
   const [exerciseElapsedSec, setExerciseElapsedSec] = useState(0);
+  const [exerciseAlertVisible, setExerciseAlertVisible] = useState(false);
 
   const load = useCallback(async () => {
     const nextDetails = await new WorkoutRepository(db).getDetails(route.params.workoutId);
@@ -116,13 +128,44 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
     if (!activeSet?.exerciseStartedAt) {
       return undefined;
     }
-    const updateElapsed = () => {
-      setExerciseElapsedSec(getExerciseElapsedSec(activeSet.exerciseStartedAt));
+    const targetDurationSec = activeSet.targetDurationSec ?? activeSet.actualDurationSec ?? 0;
+    const updateElapsed = async () => {
+      const elapsedSec = getExerciseElapsedSec(activeSet.exerciseStartedAt);
+      setExerciseElapsedSec(Math.min(elapsedSec, targetDurationSec));
+      if (
+        targetDurationSec <= 0 ||
+        elapsedSec < targetDurationSec ||
+        exerciseTimerFinishingRef.current
+      ) {
+        return;
+      }
+      exerciseTimerFinishingRef.current = true;
+      try {
+        await new WorkoutRepository(db).stopExerciseTimer(activeSet.id, targetDurationSec);
+        const shouldShowAlert =
+          exerciseTimerAlertModeRef.current !== 'silent' &&
+          (!exerciseTimerWasBackgroundedRef.current || (await isNativeTimerAlertActive()));
+        setExerciseAlertVisible(shouldShowAlert);
+        setActiveExerciseSetId(null);
+        setExerciseElapsedSec(targetDurationSec);
+        await load();
+      } finally {
+        exerciseTimerFinishingRef.current = false;
+      }
     };
-    updateElapsed();
-    const intervalId = setInterval(updateElapsed, 1000);
+    void updateElapsed();
+    const intervalId = setInterval(() => void updateElapsed(), 1000);
     return () => clearInterval(intervalId);
-  }, [activeExerciseSetId, details]);
+  }, [activeExerciseSetId, db, details, load]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state !== 'active' && activeExerciseSetId) {
+        exerciseTimerWasBackgroundedRef.current = true;
+      }
+    });
+    return () => subscription.remove();
+  }, [activeExerciseSetId]);
 
   const completeSet = async (setId: string) => {
     const edit = edits[setId];
@@ -142,6 +185,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
       }
       const repository = new WorkoutRepository(db);
       if (activeExerciseSetId === setId) {
+        cancelScheduledTimerAlert();
         await repository.stopExerciseTimer(setId, exerciseElapsedSec);
       }
       if (activeRestSetId && activeRestSetId !== setId) {
@@ -296,13 +340,16 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
     const repository = new WorkoutRepository(db);
     try {
       if (activeExerciseSetId === set.id) {
+        cancelScheduledTimerAlert();
         await repository.stopExerciseTimer(set.id, exerciseElapsedSec);
         setActiveExerciseSetId(null);
         setExerciseElapsedSec(0);
+        exerciseTimerWasBackgroundedRef.current = false;
         await load();
         return;
       }
       if (activeExerciseSetId) {
+        cancelScheduledTimerAlert();
         await repository.stopExerciseTimer(activeExerciseSetId, exerciseElapsedSec);
       }
       const durationSec = parseDurationInput(edits[set.id]?.durationInput ?? '');
@@ -317,6 +364,17 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
         targetDurationSec: durationSec,
       });
       await repository.startExerciseTimer(set.id);
+      const settings = await new SettingsRepository(db).get();
+      exerciseTimerAlertModeRef.current = settings.timerAlert;
+      await requestTimerAlertPermission();
+      scheduleTimerAlert(
+        durationSec * 1000,
+        settings.timerAlert,
+        settings.timerSoundUri,
+        settings.timerSoundVolume,
+      );
+      exerciseTimerWasBackgroundedRef.current = false;
+      setExerciseAlertVisible(false);
       setActiveExerciseSetId(set.id);
       setExerciseElapsedSec(0);
       await load();
@@ -496,7 +554,14 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                     exercise.metricType === 'duration' ? (
                       <>
                         <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800' }}>
-                          Exercise timer: {formatDuration(activeExerciseSetId === set.id ? exerciseElapsedSec : set.actualDurationSec)}
+                          Exercise timer: {formatDuration(
+                            activeExerciseSetId === set.id
+                              ? Math.max(
+                                  0,
+                                  (set.targetDurationSec ?? set.actualDurationSec ?? 0) - exerciseElapsedSec,
+                                )
+                              : set.actualDurationSec,
+                          )}
                         </Text>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                           <View style={{ flex: 1 }}>
@@ -668,6 +733,36 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                 <Button onPress={() => void saveSetEdit()}>Save</Button>
               </View>
             </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal animationType="fade" transparent visible={exerciseAlertVisible}>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            padding: 20,
+            backgroundColor: 'rgba(0, 0, 0, 0.42)',
+          }}>
+          <View
+            style={{
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+              borderRadius: 8,
+              borderWidth: 1,
+              gap: 12,
+              padding: 16,
+            }}>
+            <Text style={{ color: colors.text, fontSize: 20, fontWeight: '900' }}>
+              Exercise time finished
+            </Text>
+            <Button
+              onPress={() => {
+                stopTimerSound();
+                setExerciseAlertVisible(false);
+              }}>
+              Stop alert
+            </Button>
           </View>
         </View>
       </Modal>
