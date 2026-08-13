@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Modal, Pressable, Text, TextInput, View, type NativeSyntheticEvent, type TextInputKeyPressEventData } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -13,6 +13,7 @@ import {
   scheduleTimerAlert,
   stopTimerSound,
 } from '@shared/lib/timerAlert';
+import { useTimerAlertDismissal } from '@shared/lib/useTimerAlertDismissal';
 import { Button } from '@shared/ui/Button';
 import { useThemeColors } from '@shared/ui/theme';
 
@@ -64,6 +65,9 @@ export const RestTimer = ({
   const soundUriRef = useRef(soundUri);
   const soundVolumeRef = useRef(soundVolume);
   const targetSecRef = useRef(selectedSec);
+  const dismissAlert = useCallback(() => setAlertVisible(false), []);
+
+  useTimerAlertDismissal(alertVisible, dismissAlert);
 
   useEffect(() => {
     onCompleteRef.current = onComplete;

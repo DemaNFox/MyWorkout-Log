@@ -126,10 +126,14 @@ class WorkoutTimerAlertService : Service() {
   }
 
   private fun stopAlert() {
+    val wasActive = isAlertActive
     isAlertActive = false
     releaseAlert()
     stopForeground(STOP_FOREGROUND_REMOVE)
     stopSelf()
+    if (wasActive) {
+      notifyAlertStopped(this)
+    }
   }
 
   private fun releaseAlert() {
@@ -162,6 +166,7 @@ class WorkoutTimerAlertService : Service() {
   companion object {
     private const val ACTION_START = "com.workoutlogger.mvp.START_TIMER_ALERT_SERVICE"
     private const val ACTION_STOP = "com.workoutlogger.mvp.STOP_TIMER_ALERT_SERVICE"
+    const val ACTION_ALERT_STOPPED = "com.workoutlogger.mvp.TIMER_ALERT_STOPPED"
     private const val CHANNEL_ID = "workout_rest_timer_active_v4"
     private const val MODE_SOUND = "sound"
     private const val MODE_SOUND_VIBRATE = "sound-vibrate"
@@ -184,9 +189,19 @@ class WorkoutTimerAlertService : Service() {
     }
 
     fun stop(context: Context) {
+      val wasActive = isAlertActive
       isAlertActive = false
       context.stopService(Intent(context, WorkoutTimerAlertService::class.java))
       context.getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
+      if (wasActive) {
+        notifyAlertStopped(context)
+      }
+    }
+
+    private fun notifyAlertStopped(context: Context) {
+      context.sendBroadcast(
+        Intent(ACTION_ALERT_STOPPED).setPackage(context.packageName),
+      )
     }
   }
 }

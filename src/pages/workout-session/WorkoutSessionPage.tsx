@@ -25,6 +25,7 @@ import {
   scheduleTimerAlert,
   stopTimerSound,
 } from '@shared/lib/timerAlert';
+import { useTimerAlertDismissal } from '@shared/lib/useTimerAlertDismissal';
 import { Button } from '@shared/ui/Button';
 import { Card } from '@shared/ui/Card';
 import { EmptyState } from '@shared/ui/EmptyState';
@@ -87,6 +88,9 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   const [commentHistoryExercise, setCommentHistoryExercise] = useState<WorkoutExercise | null>(null);
   const [commentHistory, setCommentHistory] = useState<ExerciseCommentEntry[]>([]);
   const [commentHistoryLoading, setCommentHistoryLoading] = useState(false);
+  const dismissExerciseAlert = useCallback(() => setExerciseAlertVisible(false), []);
+
+  useTimerAlertDismissal(exerciseAlertVisible, dismissExerciseAlert);
 
   const load = useCallback(async () => {
     const nextDetails = await new WorkoutRepository(db).getDetails(route.params.workoutId);

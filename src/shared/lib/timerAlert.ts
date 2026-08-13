@@ -1,4 +1,4 @@
-import { NativeModules, PermissionsAndroid, Platform, Vibration } from 'react-native';
+import { NativeEventEmitter, NativeModules, PermissionsAndroid, Platform, Vibration } from 'react-native';
 
 import type { TimerAlertMode } from '@entities/settings/model/types';
 
@@ -15,6 +15,9 @@ type WorkoutTimerSoundModule = {
 };
 
 const workoutTimerSound = NativeModules.WorkoutTimerSound as WorkoutTimerSoundModule | undefined;
+const timerAlertEventEmitter = workoutTimerSound
+  ? new NativeEventEmitter(NativeModules.WorkoutTimerSound)
+  : null;
 
 export const playTimerAlert = (mode: TimerAlertMode, soundUri: string | null, volume: number): void => {
   if (mode !== 'silent') {
@@ -71,3 +74,8 @@ export const stopTimerSound = (): void => {
 
 export const isNativeTimerAlertActive = async (): Promise<boolean> =>
   workoutTimerSound?.isTimerAlertActive?.() ?? false;
+
+export const subscribeToNativeTimerAlertStopped = (onStopped: () => void): (() => void) => {
+  const subscription = timerAlertEventEmitter?.addListener('timerAlertStopped', onStopped);
+  return () => subscription?.remove();
+};

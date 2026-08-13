@@ -5,6 +5,9 @@ import android.app.AlarmManager
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
@@ -20,11 +23,24 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.WritableNativeMap
+import com.facebook.react.modules.core.DeviceEventManagerModule
+import androidx.core.content.ContextCompat
 
 class WorkoutTimerSoundModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
 
   private var pendingPromise: Promise? = null
+  private var listenerCount = 0
+  private val timerAlertStoppedReceiver = object : BroadcastReceiver() {
+    override fun onReceive(context: Context?, intent: Intent?) {
+      if (intent?.action != WorkoutTimerAlertService.ACTION_ALERT_STOPPED || listenerCount <= 0) {
+        return
+      }
+      reactContext
+        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit(TIMER_ALERT_STOPPED_EVENT, null)
+    }
+  }
   private val activityEventListener: ActivityEventListener = object : BaseActivityEventListener() {
     override fun onActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {
       if (requestCode != ringtonePickerRequestCode) {
@@ -47,9 +63,33 @@ class WorkoutTimerSoundModule(private val reactContext: ReactApplicationContext)
 
   init {
     reactContext.addActivityEventListener(activityEventListener)
+    ContextCompat.registerReceiver(
+      reactContext,
+      timerAlertStoppedReceiver,
+      IntentFilter(WorkoutTimerAlertService.ACTION_ALERT_STOPPED),
+      ContextCompat.RECEIVER_NOT_EXPORTED,
+    )
   }
 
   override fun getName(): String = "WorkoutTimerSound"
+
+  override fun invalidate() {
+    runCatching { reactContext.unregisterReceiver(timerAlertStoppedReceiver) }
+    reactContext.removeActivityEventListener(activityEventListener)
+    super.invalidate()
+  }
+
+  @ReactMethod
+  fun addListener(eventName: String) {
+    if (eventName == TIMER_ALERT_STOPPED_EVENT) {
+      listenerCount += 1
+    }
+  }
+
+  @ReactMethod
+  fun removeListeners(count: Double) {
+    listenerCount = (listenerCount - count.toInt()).coerceAtLeast(0)
+  }
 
   @ReactMethod
   fun playNotificationSound(uri: String?, volume: Double) {
@@ -243,6 +283,7 @@ class WorkoutTimerSoundModule(private val reactContext: ReactApplicationContext)
   }
 
   companion object {
+    private const val TIMER_ALERT_STOPPED_EVENT = "timerAlertStopped"
     private const val ringtonePickerRequestCode = 7401
     private const val timerAlertRequestCode = 7403
   }
