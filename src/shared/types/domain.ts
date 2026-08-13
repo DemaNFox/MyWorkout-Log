@@ -21,6 +21,7 @@ export type ImportExportType =
   | 'workout-programs'
   | 'workout-session'
   | 'program-history'
+  | 'exercise-comments'
   | 'full-backup';
 
 export type TrendDirection = 'up' | 'down' | 'same' | 'none';

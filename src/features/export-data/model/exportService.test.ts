@@ -1,12 +1,29 @@
 import { PlanRepository } from '@entities/plan/repository/planRepository';
 import { TrainingDayRepository } from '@entities/training-day/repository/trainingDayRepository';
 import { WorkoutRepository } from '@entities/workout/repository/workoutRepository';
+import { ExerciseCommentRepository } from '@entities/exercise-comment/repository/exerciseCommentRepository';
 import { runMigrations } from '@shared/db/migrations';
 import { MemoryDatabase } from '@shared/testing/memoryDatabase';
 
 import { ExportService } from './exportService';
 
 describe('ExportService', () => {
+  it('exports exercise comments separately with their exercise dictionary', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    await new ExerciseCommentRepository(db).save('back-squat', 'Keep the chest up');
+
+    const exported = await new ExportService(db).exportExerciseComments();
+
+    expect(exported.type).toBe('exercise-comments');
+    expect(exported.payload.comments).toEqual([
+      expect.objectContaining({ exerciseId: 'back-squat', text: 'Keep the chest up' }),
+    ]);
+    expect(exported.payload.exerciseDictionary).toEqual([
+      expect.objectContaining({ id: 'back-squat', name: 'Back Squat' }),
+    ]);
+  });
+
   it('exports selected programs as one importable JSON envelope', async () => {
     const db = new MemoryDatabase();
     await runMigrations(db);

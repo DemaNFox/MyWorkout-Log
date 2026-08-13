@@ -56,7 +56,7 @@ The app stores:
 - repetition-based and timed exercises;
 - completed set values: weight, reps, duration, timestamps;
 - rest timer values per set: target seconds, start/end time, logged duration;
-- exercise comments that carry into future workouts;
+- global exercise comments with a dated change log, shared across programs and workouts;
 - app settings, including theme and timer alert preferences.
 
 ## Workout Flow
@@ -73,6 +73,11 @@ History and analytics are not separate storage layers. They are views/calculatio
 - History lists finished workout sessions for the active plan.
 - Analytics calculates exercise progress from completed sets for the active plan.
 - Deleting a workout from history removes it from SQLite, so analytics is recalculated without it.
+
+During a workout, the information button in an exercise card opens its cross-program progress,
+including the best and lowest working results with dates and the recent progress chart. Exercise
+comments are keyed by stable `exerciseId`; the history button beside the comment field shows every
+saved change and its date.
 
 ## Workout History
 
@@ -269,8 +274,15 @@ Example shape:
 Use `Settings -> Create backup`.
 
 Backup JSON is intended for full local data export. It includes settings, the combined built-in
-and custom exercise dictionary, body metrics, plans, training days, planned exercises, workout
-sessions, workout exercises, and workout sets.
+and custom exercise dictionary, the global exercise comment log, body metrics, plans, training
+days, planned exercises, workout sessions, workout exercises, and workout sets.
+
+### Exercise Comment Export
+
+Use `Settings -> Export exercise comments JSON` to create a standalone `exercise-comments`
+envelope. Each entry contains its own ID, stable `exerciseId`, text, and creation date. The export
+also includes the referenced exercise dictionary records, so comments for custom exercises can be
+imported on another device. Import is idempotent: entries with IDs already present are skipped.
 
 ## Rest Timer
 

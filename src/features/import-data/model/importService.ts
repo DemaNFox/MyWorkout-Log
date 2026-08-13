@@ -6,9 +6,11 @@ import { ExerciseCatalogRepository } from '@entities/exercise/repository/exercis
 import { TrainingDayRepository } from '@entities/training-day/repository/trainingDayRepository';
 import type { Database } from '@shared/db/types';
 import { AppError } from '@shared/lib/errors';
+import { ExerciseCommentRepository } from '@entities/exercise-comment/repository/exerciseCommentRepository';
 
 export interface ImportResult {
   importedPlanIds: string[];
+  importedCommentCount?: number;
 }
 
 export class ImportService {
@@ -25,7 +27,43 @@ export class ImportService {
         envelope.payload.exerciseDictionary ?? [],
       );
     }
+    if (envelope.type === 'exercise-comments') {
+      let importedCommentCount = 0;
+      await this.db.transaction(async () => {
+        await this.prepareCommentExerciseCatalog(
+          envelope.payload.comments.map(comment => comment.exerciseId),
+          envelope.payload.exerciseDictionary,
+        );
+        importedCommentCount = await new ExerciseCommentRepository(this.db).import(
+          envelope.payload.comments,
+        );
+      });
+      return {
+        importedPlanIds: [],
+        importedCommentCount,
+      };
+    }
     return { importedPlanIds: [] };
+  }
+
+  private async prepareCommentExerciseCatalog(
+    exerciseIds: string[],
+    exerciseDictionary: Exercise[],
+  ): Promise<void> {
+    const catalog = new ExerciseCatalogRepository(this.db);
+    for (const exerciseId of new Set(exerciseIds)) {
+      if (await catalog.getById(exerciseId)) {
+        continue;
+      }
+      const metadata = exerciseDictionary.find(exercise => exercise.id === exerciseId);
+      if (!metadata) {
+        throw new AppError(
+          `Exercise “${exerciseId}” is missing from the exercise dictionary`,
+          'import.exerciseMissingMetadata',
+        );
+      }
+      await catalog.importAsCustom({ ...metadata, isCustom: true });
+    }
   }
 
   private async importPrograms(

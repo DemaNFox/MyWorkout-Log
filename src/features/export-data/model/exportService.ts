@@ -6,6 +6,7 @@ import { withTrends } from '@entities/analytics/lib/calculateExerciseDynamics';
 import { selectExercisePerformance } from '@entities/analytics/lib/selectExercisePerformance';
 import type {
   FullBackupExport,
+  ExerciseCommentsExport,
   ProgramHistoryExport,
   ProgramHistoryPayload,
   WorkoutPlanExport,
@@ -18,6 +19,7 @@ import { nowIso } from '@shared/lib/date';
 import { AppError } from '@shared/lib/errors';
 import { ExerciseCatalogRepository } from '@entities/exercise/repository/exerciseCatalogRepository';
 import { BodyMetricRepository } from '@entities/body-metric/repository/bodyMetricRepository';
+import { ExerciseCommentRepository } from '@entities/exercise-comment/repository/exerciseCommentRepository';
 
 export class ExportService {
   constructor(private readonly db: Database) {}
@@ -114,10 +116,11 @@ export class ExportService {
       schemaVersion: 2,
       type: 'full-backup',
       exportedAt: nowIso(),
-      app: { name: 'Workout Logger', version: '1.5.1' },
+      app: { name: 'Workout Logger', version: '1.6.0' },
       payload: {
         exerciseDictionary: await new ExerciseCatalogRepository(this.db).list(),
         bodyMetrics: await new BodyMetricRepository(this.db).list(),
+        exerciseComments: await new ExerciseCommentRepository(this.db).listAll(),
         settings: {
           weightUnit: settings.weightUnit,
           defaultRestSec: settings.defaultRestSec,
@@ -138,6 +141,20 @@ export class ExportService {
         workoutExercises,
         workoutSets,
       },
+    };
+  }
+
+  async exportExerciseComments(): Promise<ExerciseCommentsExport> {
+    const comments = await new ExerciseCommentRepository(this.db).listAll();
+    const exerciseIds = new Set(comments.map(comment => comment.exerciseId));
+    const exerciseDictionary = (await new ExerciseCatalogRepository(this.db).list()).filter(
+      exercise => exerciseIds.has(exercise.id),
+    );
+    return {
+      schemaVersion: 2,
+      type: 'exercise-comments',
+      exportedAt: nowIso(),
+      payload: { comments, exerciseDictionary },
     };
   }
 

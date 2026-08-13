@@ -203,6 +203,29 @@ export const SettingsPage = () => {
     }
   };
 
+  const exportExerciseComments = async () => {
+    setOperationFeedback({
+      status: 'loading',
+      title: 'Exporting comments',
+      message: 'Preparing the exercise comment log…',
+    });
+    try {
+      const exported = await new ExportService(db).exportExerciseComments();
+      const file = await shareExport({
+        contents: JSON.stringify(exported, null, 2),
+        fileNamePrefix: 'workout-logger-exercise-comments',
+        dialogTitle: 'Share exercise comments JSON',
+      });
+      setOperationFeedback({
+        status: 'success',
+        title: 'Comments exported',
+        message: `File created: ${file.fileName}`,
+      });
+    } catch (error) {
+      showOperationError('Export failed', getExportErrorMessage(error));
+    }
+  };
+
   const openExportPicker = async (mode: ExportPickerMode) => {
     const nextPlans = await new PlanRepository(db).list();
     setPlans(nextPlans);
@@ -263,7 +286,10 @@ export const SettingsPage = () => {
       setOperationFeedback({
         status: 'success',
         title: 'Import complete',
-        message: formatImportedPrograms(result.importedPlanIds.length),
+        message:
+          result.importedCommentCount === undefined
+            ? formatImportedPrograms(result.importedPlanIds.length)
+            : `${result.importedCommentCount} comment entries imported successfully.`,
       });
     } catch (error) {
       showOperationError('Import failed', getImportErrorMessage(error));
@@ -368,6 +394,7 @@ export const SettingsPage = () => {
         <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Backup</Text>
         <Button onPress={() => void openExportPicker('programs')}>Export programs JSON</Button>
         <Button onPress={() => void openExportPicker('history')}>Export program history JSON</Button>
+        <Button onPress={() => void exportExerciseComments()}>Export exercise comments JSON</Button>
         <Button onPress={backup}>Create backup JSON</Button>
         {exportFileName ? <Text style={{ color: colors.muted }}>Saved file: {exportFileName}</Text> : null}
         {exportText ? <Text selectable style={{ color: colors.text, fontSize: 12 }}>{exportText}</Text> : null}

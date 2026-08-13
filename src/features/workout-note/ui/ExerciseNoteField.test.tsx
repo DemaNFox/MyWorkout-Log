@@ -11,12 +11,14 @@ describe('ExerciseNoteField', () => {
     const onChangeText = jest.fn();
     const onEdit = jest.fn();
     const onSave = jest.fn();
+    const onHistory = jest.fn();
     const { rerender } = render(
       <ExerciseNoteField
         dirty={false}
         editing={false}
         onChangeText={onChangeText}
         onEdit={onEdit}
+        onHistory={onHistory}
         onSave={onSave}
         value="Keep elbows stable"
       />,
@@ -24,6 +26,8 @@ describe('ExerciseNoteField', () => {
 
     fireEvent.press(screen.getByLabelText('Edit exercise comment'));
     expect(onEdit).toHaveBeenCalledTimes(1);
+    fireEvent.press(screen.getByLabelText('Show exercise comment history'));
+    expect(onHistory).toHaveBeenCalledTimes(1);
 
     rerender(
       <ExerciseNoteField
@@ -31,6 +35,7 @@ describe('ExerciseNoteField', () => {
         editing
         onChangeText={onChangeText}
         onEdit={onEdit}
+        onHistory={onHistory}
         onSave={onSave}
         value="Keep elbows stable"
       />,

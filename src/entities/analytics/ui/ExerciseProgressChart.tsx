@@ -1,6 +1,6 @@
 import { Text, View } from 'react-native';
 
-import type { ExerciseHistoryRow } from '@entities/analytics/model/types';
+import type { ExerciseHistoryRow } from '../model/types';
 import { Card } from '@shared/ui/Card';
 import { useThemeColors } from '@shared/ui/theme';
 

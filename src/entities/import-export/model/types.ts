@@ -8,6 +8,7 @@ import type { ExerciseMetricType } from '@shared/types/domain';
 import type { MeasurementType, SetEffort, WeightMode } from '@shared/types/domain';
 import type { Exercise } from '@entities/exercise/model/types';
 import type { BodyMetricEntry } from '@entities/body-metric/model/types';
+import type { ExerciseCommentEntry } from '@entities/exercise-comment/model/types';
 
 export interface ExportEnvelope<TPayload, TType extends ImportExportType> {
   schemaVersion: 1 | 2;
@@ -45,6 +46,7 @@ export interface WorkoutProgramsPayload {
 export interface FullBackupPayload {
   exerciseDictionary: Exercise[];
   bodyMetrics: BodyMetricEntry[];
+  exerciseComments: ExerciseCommentEntry[];
   settings: Pick<
     UserSettings,
     | 'weightUnit'
@@ -65,6 +67,11 @@ export interface FullBackupPayload {
   workoutSessions: WorkoutSession[];
   workoutExercises: WorkoutExercise[];
   workoutSets: WorkoutSet[];
+}
+
+export interface ExerciseCommentsPayload {
+  comments: ExerciseCommentEntry[];
+  exerciseDictionary: Exercise[];
 }
 
 export interface ProgramHistoryPayload {
@@ -123,6 +130,8 @@ export type WorkoutProgramsExport = ExportEnvelope<WorkoutProgramsPayload, 'work
 
 export type ProgramHistoryExport = ExportEnvelope<ProgramHistoryPayload, 'program-history'>;
 
+export type ExerciseCommentsExport = ExportEnvelope<ExerciseCommentsPayload, 'exercise-comments'>;
+
 export type FullBackupExport = ExportEnvelope<FullBackupPayload, 'full-backup'> & {
   app: {
     name: 'Workout Logger';
@@ -130,4 +139,8 @@ export type FullBackupExport = ExportEnvelope<FullBackupPayload, 'full-backup'> 
   };
 };
 
-export type ImportEnvelope = WorkoutPlanExport | WorkoutProgramsExport | FullBackupExport;
+export type ImportEnvelope =
+  | WorkoutPlanExport
+  | WorkoutProgramsExport
+  | ExerciseCommentsExport
+  | FullBackupExport;

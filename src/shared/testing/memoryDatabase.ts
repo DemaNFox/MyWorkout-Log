@@ -49,6 +49,9 @@ export class MemoryDatabase implements Database {
       return { changes };
     }
     if (query.startsWith('insert into')) {
+      if (query.includes(' select ')) {
+        return { changes: 0 };
+      }
       this.insert(sql, params);
       return { changes: 1 };
     }

@@ -6,7 +6,7 @@ import { useDatabase } from '@app/providers/DatabaseProvider';
 import { getTrendColor } from '@entities/analytics/lib/getTrendColor';
 import type { AnalyticsExercise, ExerciseHistoryRow } from '@entities/analytics/model/types';
 import { AnalyticsRepository } from '@entities/analytics/repository/analyticsRepository';
-import { ExerciseProgressChart } from '@widgets/exercise-progress-chart/ExerciseProgressChart';
+import { ExerciseProgressChart } from '@entities/analytics/ui/ExerciseProgressChart';
 import { Card } from '@shared/ui/Card';
 import { EmptyState } from '@shared/ui/EmptyState';
 import { Screen } from '@shared/ui/Screen';

@@ -3,10 +3,40 @@ import { TrainingDayRepository } from '@entities/training-day/repository/trainin
 import { runMigrations } from '@shared/db/migrations';
 import { MemoryDatabase } from '@shared/testing/memoryDatabase';
 import { ExerciseCatalogRepository } from '@entities/exercise/repository/exerciseCatalogRepository';
+import { ExerciseCommentRepository } from '@entities/exercise-comment/repository/exerciseCommentRepository';
 
 import { ImportService } from './importService';
 
 describe('ImportService', () => {
+  it('imports a standalone exercise comment log without duplicates', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    const raw = JSON.stringify({
+      schemaVersion: 2,
+      type: 'exercise-comments',
+      exportedAt: '2026-08-13T10:00:00.000Z',
+      payload: {
+        comments: [{
+          id: 'comment-1',
+          exerciseId: 'back-squat',
+          text: 'Keep the chest up',
+          createdAt: '2026-08-13T09:00:00.000Z',
+        }],
+        exerciseDictionary: [],
+      },
+    });
+
+    await expect(new ImportService(db).importJson(raw)).resolves.toEqual({
+      importedPlanIds: [],
+      importedCommentCount: 1,
+    });
+    await expect(new ImportService(db).importJson(raw)).resolves.toEqual({
+      importedPlanIds: [],
+      importedCommentCount: 0,
+    });
+    await expect(new ExerciseCommentRepository(db).list('back-squat')).resolves.toHaveLength(1);
+  });
+
   it('imports multiple programs from one JSON file', async () => {
     const db = new MemoryDatabase();
     await runMigrations(db);

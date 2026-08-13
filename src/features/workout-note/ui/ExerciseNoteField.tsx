@@ -9,7 +9,9 @@ interface ExerciseNoteFieldProps {
   editing: boolean;
   onChangeText: (value: string) => void;
   onEdit: () => void;
+  onHistory: () => void;
   onSave: () => void;
+  historyDisabled?: boolean;
   value: string;
 }
 
@@ -18,7 +20,9 @@ export const ExerciseNoteField = ({
   editing,
   onChangeText,
   onEdit,
+  onHistory,
   onSave,
+  historyDisabled = false,
   value,
 }: ExerciseNoteFieldProps) => {
   const colors = useThemeColors();
@@ -53,6 +57,27 @@ export const ExerciseNoteField = ({
         }}>
         Exercise comment
       </Text>
+      <Pressable
+        accessibilityLabel="Show exercise comment history"
+        accessibilityRole="button"
+        disabled={historyDisabled}
+        onPress={onHistory}
+        style={({ pressed }) => ({
+          alignItems: 'center',
+          borderColor: colors.secondaryBorder,
+          borderRadius: 18,
+          borderWidth: 1,
+          height: 34,
+          justifyContent: 'center',
+          opacity: historyDisabled ? 0.4 : pressed ? 0.8 : 1,
+          position: 'absolute',
+          right: 92,
+          top: 7,
+          width: 34,
+          zIndex: 2,
+        })}>
+        <MaterialIcons color={colors.secondaryText} name="history" size={18} />
+      </Pressable>
       <Pressable
         accessibilityLabel={editing ? 'Save exercise comment' : 'Edit exercise comment'}
         accessibilityRole="button"

@@ -14,6 +14,9 @@ const isNonNegativeNumber = (value: unknown): value is number =>
 const isNullableString = (value: unknown): value is string | null =>
   value === null || typeof value === 'string';
 
+const isIsoDateString = (value: unknown): value is string =>
+  typeof value === 'string' && !Number.isNaN(Date.parse(value));
+
 const isExerciseMetricType = (value: unknown): value is 'reps' | 'duration' =>
   value === 'reps' || value === 'duration';
 
@@ -110,6 +113,18 @@ const validateProgramsPayload = (payload: unknown): payload is WorkoutProgramsPa
   payload.programs.every(validatePlanPayload) &&
   (!('exerciseDictionary' in payload) || validateExerciseDictionary(payload.exerciseDictionary));
 
+const validateCommentsPayload = (payload: unknown): boolean =>
+  isRecord(payload) &&
+  Array.isArray(payload.comments) &&
+  payload.comments.every(comment =>
+    isRecord(comment) &&
+    isNonEmptyString(comment.id) &&
+    isNonEmptyString(comment.exerciseId) &&
+    typeof comment.text === 'string' &&
+    isIsoDateString(comment.createdAt),
+  ) &&
+  validateExerciseDictionary(payload.exerciseDictionary);
+
 export const parseImportEnvelope = (raw: string): ImportEnvelope => {
   let parsed: unknown;
   try {
@@ -128,6 +143,9 @@ export const parseImportEnvelope = (raw: string): ImportEnvelope => {
     return parsed as unknown as ImportEnvelope;
   }
   if (parsed.type === 'workout-programs' && validateProgramsPayload(parsed.payload)) {
+    return parsed as unknown as ImportEnvelope;
+  }
+  if (parsed.type === 'exercise-comments' && validateCommentsPayload(parsed.payload)) {
     return parsed as unknown as ImportEnvelope;
   }
   if (parsed.type === 'full-backup' && isRecord(parsed.payload)) {

@@ -6,12 +6,17 @@ import { MaterialIcons } from '@expo/vector-icons';
 import type { RootStackParamList } from '@app/navigation/types';
 import { useDatabase } from '@app/providers/DatabaseProvider';
 import { getRestLabel } from '@entities/workout/lib/getRestLabel';
+import type { ExerciseHistoryRow } from '@entities/analytics/model/types';
+import { AnalyticsRepository } from '@entities/analytics/repository/analyticsRepository';
+import type { ExerciseCommentEntry } from '@entities/exercise-comment/model/types';
+import { ExerciseCommentRepository } from '@entities/exercise-comment/repository/exerciseCommentRepository';
 import type { WorkoutDetails, WorkoutExercise, WorkoutSet } from '@entities/workout/model/types';
 import { WorkoutRepository } from '@entities/workout/repository/workoutRepository';
 import type { TimerAlertMode } from '@entities/settings/model/types';
 import { SettingsRepository } from '@entities/settings/repository/settingsRepository';
 import { RestTimer } from '@features/rest-timer/ui/RestTimer';
 import { ExerciseNoteField } from '@features/workout-note/ui/ExerciseNoteField';
+import { ExerciseCommentHistoryModal } from '@features/workout-note/ui/ExerciseCommentHistoryModal';
 import { formatDuration } from '@shared/lib/date';
 import {
   cancelScheduledTimerAlert,
@@ -28,6 +33,7 @@ import { TextField } from '@shared/ui/TextField';
 import { useLayoutMetrics } from '@shared/ui/layout';
 import { spacing, useThemeColors } from '@shared/ui/theme';
 import type { SetEffort } from '@shared/types/domain';
+import { ExerciseInfoModal } from '@widgets/exercise-info-modal/ExerciseInfoModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutSession'>;
 const workoutScrollOffsets = new Map<string, number>();
@@ -75,6 +81,12 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   const [activeExerciseSetId, setActiveExerciseSetId] = useState<string | null>(null);
   const [exerciseElapsedSec, setExerciseElapsedSec] = useState(0);
   const [exerciseAlertVisible, setExerciseAlertVisible] = useState(false);
+  const [infoExercise, setInfoExercise] = useState<WorkoutExercise | null>(null);
+  const [infoHistory, setInfoHistory] = useState<ExerciseHistoryRow[]>([]);
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [commentHistoryExercise, setCommentHistoryExercise] = useState<WorkoutExercise | null>(null);
+  const [commentHistory, setCommentHistory] = useState<ExerciseCommentEntry[]>([]);
+  const [commentHistoryLoading, setCommentHistoryLoading] = useState(false);
 
   const load = useCallback(async () => {
     const nextDetails = await new WorkoutRepository(db).getDetails(route.params.workoutId);
@@ -328,11 +340,45 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
 
   const saveExerciseNote = async (exerciseId: string) => {
     try {
-      await new WorkoutRepository(db).updateExerciseNote(exerciseId, exerciseNotes[exerciseId] ?? '');
+      const exercise = details?.exercises.find(candidate => candidate.id === exerciseId);
+      const text = exerciseNotes[exerciseId] ?? '';
+      if (exercise?.exerciseId) {
+        await new ExerciseCommentRepository(db).save(exercise.exerciseId, text);
+      }
+      await new WorkoutRepository(db).updateExerciseNote(exerciseId, text);
       setEditingExerciseNoteId(null);
       await load();
     } catch (error) {
       Alert.alert('Cannot save comment', error instanceof Error ? error.message : 'Unknown error');
+    }
+  };
+
+  const openExerciseInfo = async (exercise: WorkoutExercise) => {
+    setInfoExercise(exercise);
+    setInfoHistory([]);
+    setInfoLoading(true);
+    try {
+      const rows = await new AnalyticsRepository(db).getExerciseHistoryAcrossPlans({
+        exerciseId: exercise.exerciseId,
+        name: exercise.nameSnapshot,
+      });
+      setInfoHistory(rows);
+    } finally {
+      setInfoLoading(false);
+    }
+  };
+
+  const openCommentHistory = async (exercise: WorkoutExercise) => {
+    if (!exercise.exerciseId) {
+      return;
+    }
+    setCommentHistoryExercise(exercise);
+    setCommentHistory([]);
+    setCommentHistoryLoading(true);
+    try {
+      setCommentHistory(await new ExerciseCommentRepository(db).list(exercise.exerciseId));
+    } finally {
+      setCommentHistoryLoading(false);
     }
   };
 
@@ -468,7 +514,27 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
           {details.exercises.map(exercise => (
             <View key={exercise.id} onLayout={event => handleExerciseLayout(exercise.id, event)}>
             <Card>
-              <Text style={{ color: colors.text, fontSize: 20, fontWeight: '800' }}>{exercise.nameSnapshot}</Text>
+              <View style={{ alignItems: 'center', flexDirection: 'row', gap: 8 }}>
+                <Text style={{ color: colors.text, flex: 1, fontSize: 20, fontWeight: '800' }}>
+                  {exercise.nameSnapshot}
+                </Text>
+                <Pressable
+                  accessibilityLabel={`Information about ${exercise.nameSnapshot}`}
+                  accessibilityRole="button"
+                  onPress={() => void openExerciseInfo(exercise)}
+                  style={({ pressed }) => ({
+                    alignItems: 'center',
+                    borderColor: colors.secondaryBorder,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    height: 40,
+                    justifyContent: 'center',
+                    opacity: pressed ? 0.8 : 1,
+                    width: 40,
+                  })}>
+                  <MaterialIcons color={colors.secondaryText} name="info-outline" size={22} />
+                </Pressable>
+              </View>
               {exercise.sets.map(set => {
                 const restLabel = getRestLabel(details, set.id);
                 const firstPendingSet = exercise.sets.find(candidate => !candidate.completed);
@@ -591,6 +657,8 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                   setExerciseNotes(current => ({ ...current, [exercise.id]: value }))
                 }
                 onEdit={() => setEditingExerciseNoteId(exercise.id)}
+                historyDisabled={!exercise.exerciseId}
+                onHistory={() => void openCommentHistory(exercise)}
                 onSave={() => {
                   if (isExerciseNoteDirty(exercise, exerciseNotes)) {
                     void saveExerciseNote(exercise.id);
@@ -615,6 +683,20 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
           <Button onPress={confirmCancelWorkout} variant="danger">Cancel workout</Button>
         </View>
       </ScrollView>
+      <ExerciseInfoModal
+        exerciseName={infoExercise?.nameSnapshot ?? ''}
+        loading={infoLoading}
+        onClose={() => setInfoExercise(null)}
+        rows={infoHistory}
+        visible={infoExercise !== null}
+      />
+      <ExerciseCommentHistoryModal
+        entries={commentHistory}
+        exerciseName={commentHistoryExercise?.nameSnapshot ?? ''}
+        loading={commentHistoryLoading}
+        onClose={() => setCommentHistoryExercise(null)}
+        visible={commentHistoryExercise !== null}
+      />
       <View
         style={{
           position: 'absolute',

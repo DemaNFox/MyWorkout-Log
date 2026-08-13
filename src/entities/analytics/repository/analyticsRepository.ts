@@ -57,6 +57,18 @@ export class AnalyticsRepository {
       return [];
     }
 
+    return this.loadExerciseHistory(exercise, activePlanId);
+  }
+
+  async getExerciseHistoryAcrossPlans(exercise: AnalyticsExercise): Promise<ExerciseHistoryRow[]> {
+    return this.loadExerciseHistory(exercise, null);
+  }
+
+  private async loadExerciseHistory(
+    exercise: AnalyticsExercise,
+    planId: string | null,
+  ): Promise<ExerciseHistoryRow[]> {
+
     const rows = await this.db.getAll<HistorySqlRow>(
       `SELECT
          ws.id as workoutSessionId,
@@ -69,13 +81,11 @@ export class AnalyticsRepository {
        JOIN workout_sets wset ON wset.workout_exercise_id = we.id
        WHERE ((? IS NOT NULL AND we.exercise_id = ?) OR (we.exercise_id IS NULL AND we.name_snapshot = ?))
          AND wset.completed = 1
-         AND ws.source_plan_id = ?
-         AND (
-           we.source_planned_exercise_id IS NULL
-           OR EXISTS (SELECT 1 FROM planned_exercises pe WHERE pe.id = we.source_planned_exercise_id)
-         )
+         ${planId ? 'AND ws.source_plan_id = ?' : ''}
        ORDER BY ws.started_at ASC, wset.set_index ASC`,
-      [exercise.exerciseId, exercise.exerciseId, exercise.name, activePlanId],
+      planId
+        ? [exercise.exerciseId, exercise.exerciseId, exercise.name, planId]
+        : [exercise.exerciseId, exercise.exerciseId, exercise.name],
     );
     const grouped = new Map<string, { date: string; sets: Array<{ actualWeight: number; actualReps: number }> }>();
     rows.forEach(row => {
