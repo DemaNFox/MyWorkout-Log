@@ -74,7 +74,7 @@ History and analytics are not separate storage layers. They are views/calculatio
 
 - History lists finished workout sessions for the active plan.
 - Analytics calculates exercise progress from completed sets for the active plan.
-- Progress defaults to a repetition-based exercise and lets you switch between weight and repetition charts. Timed exercises remain selectable, but duration analytics is not yet implemented.
+- Progress defaults to a repetition-based exercise and lets you switch between weight and repetition charts. The chart uses real workout dates on its horizontal axis; tapping a point shows that workout's date and value. Timed exercises remain selectable, but duration analytics is not yet implemented.
 - Deleting a workout from history removes it from SQLite, so analytics is recalculated without it.
 
 During a workout, the information button in an exercise card opens its cross-program progress,
@@ -306,6 +306,8 @@ Timer alert settings are available in `Settings`:
 - in-app volume slider.
 
 ## Android Build
+
+To regenerate the launcher icon, adaptive icon, and native Android splash assets after editing the icon source, install Pillow and run `python scripts/generate_icons.py` from the repository root.
 
 Debug/dev builds require Metro because they load JavaScript from the local development server.
 

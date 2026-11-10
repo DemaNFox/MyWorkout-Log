@@ -13,7 +13,7 @@
       "versionCode": 10,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#f4f7f6"
+        "backgroundColor": "#10271D"
       }
     },
     "newArchEnabled": false,
