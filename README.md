@@ -172,6 +172,48 @@ Flow:
 
 The recommended import format is the same `workout-programs` envelope used by export. A file can contain one program or several programs.
 
+Save the following as a UTF-8 `.json` file and select it in `Settings -> Import JSON`. This example uses the built-in `back-squat` exercise, so it does not need dictionary metadata:
+
+```json
+{
+  "schemaVersion": 2,
+  "type": "workout-programs",
+  "exportedAt": "2026-11-10T12:00:00.000Z",
+  "payload": {
+    "exerciseDictionary": [],
+    "programs": [
+      {
+        "name": "My strength program",
+        "days": [
+          {
+            "name": "Day A",
+            "order": 1,
+            "exercises": [
+              {
+                "name": "Back Squat",
+                "exerciseId": "back-squat",
+                "metricType": "reps",
+                "measurementType": "weight_reps",
+                "weightMode": "total",
+                "targetSets": 3,
+                "targetReps": 5,
+                "targetWeight": 60,
+                "note": null,
+                "order": 1
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+For a custom exercise or an unknown `exerciseId`, add its full metadata to `payload.exerciseDictionary`; see the [custom exercise example and allowed values](docs/program-import.md). Import adds new programs and does not restore completed workouts. Importing the same file twice creates duplicate programs.
+
+`Import JSON` also accepts legacy `workout-plan` files and `exercise-comments` exports. `program-history` exports are for analysis and cannot be imported. `full-backup` export is not currently restorable, so do not use it to move data to another device.
+
 Rules:
 
 - `schemaVersion` may be `1` for legacy files; new files should use `2`.
