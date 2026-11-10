@@ -50,6 +50,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   const exerciseTimerWasBackgroundedRef = useRef(false);
   const exerciseTimerAlertModeRef = useRef<TimerAlertMode>('vibrate');
   const [details, setDetails] = useState<WorkoutDetails | null>(null);
+  const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
   const [workoutComment, setWorkoutComment] = useState('');
   const [isFinishing, setIsFinishing] = useState(false);
@@ -221,6 +222,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
       setActiveRestStartedAt(null);
       setActiveRestTargetSec(null);
       setRestTimerStartKey(current => current + 1);
+      setExpandedExerciseId(null);
       await load();
     } catch (error) {
       Alert.alert('Cannot complete set', error instanceof Error ? error.message : 'Unknown error');
@@ -500,8 +502,13 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
   };
 
   if (!details) {
-    return <Screen title="Workout"><EmptyState text="Workout not found." /></Screen>;
+    return <Screen title="Тренировка"><EmptyState text="Тренировка не найдена." /></Screen>;
   }
+
+  const currentExercise = details.exercises.find(exercise => exercise.sets.some(set => !set.completed));
+  const currentExerciseId = currentExercise?.id ?? details.exercises[0]?.id;
+  const completedExerciseCount = details.exercises.filter(exercise => exercise.sets.every(set => set.completed)).length;
+  const progress = details.exercises.length > 0 ? completedExerciseCount / details.exercises.length : 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -511,11 +518,24 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
         onScroll={handleScroll}
         ref={scrollRef}
         scrollEventThrottle={250}>
+        <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800', letterSpacing: 1.4, marginBottom: spacing.xs }}>ТРЕНИРОВКА</Text>
         <Text style={{ color: colors.text, fontSize: 28, fontWeight: '800', marginBottom: spacing.lg }}>
           {details.session.trainingDayNameSnapshot ?? 'Workout'}
         </Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+          <Text style={{ color: colors.muted }}>Упражнение {Math.min(completedExerciseCount + 1, details.exercises.length)} из {details.exercises.length}</Text>
+          <Text style={{ color: colors.muted }}>{Math.round(progress * 100)}%</Text>
+        </View>
+        <View style={{ height: 6, borderRadius: 6, backgroundColor: colors.border, marginBottom: spacing.lg }}><View style={{ width: `${Math.round(progress * 100)}%`, height: 6, borderRadius: 6, backgroundColor: colors.primary }} /></View>
         <View style={{ gap: spacing.lg }}>
-          {details.exercises.map(exercise => (
+          {details.exercises.map(exercise => (exercise.id !== (expandedExerciseId ?? currentExerciseId) ? (
+            <Pressable key={exercise.id} accessibilityRole="button" accessibilityLabel={`Открыть ${exercise.nameSnapshot}`} onPress={() => setExpandedExerciseId(exercise.id)}>
+              <Card><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View><Text style={{ color: colors.text, fontSize: 16, fontWeight: '800' }}>{exercise.nameSnapshot}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{exercise.sets.filter(set => set.completed).length} из {exercise.sets.length} подходов</Text></View>
+                <MaterialIcons name={exercise.sets.every(set => set.completed) ? 'check-circle' : 'chevron-right'} color={colors.primary} size={22} />
+              </View></Card>
+            </Pressable>
+          ) : (
             <View key={exercise.id} onLayout={event => handleExerciseLayout(exercise.id, event)}>
             <Card>
               <View style={{ alignItems: 'center', flexDirection: 'row', gap: 8 }}>
@@ -545,16 +565,23 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                 const canCompleteInOrder = set.completed || firstPendingSet?.id === set.id;
                 const setEditable = !set.completed && canCompleteInOrder && activeExerciseSetId !== set.id;
 
+                if (set.completed) {
+                  return <CompletedSetSummary key={set.id} activeRemainingSec={activeRestSetId === set.id ? activeRestRemainingSec : null} exercise={exercise} onEdit={() => openSetEdit(exercise, set, restLabel !== null)} restLabel={restLabel} set={set} />;
+                }
+                if (!canCompleteInOrder) {
+                  return <View key={set.id} style={{ borderTopColor: colors.border, borderTopWidth: 1, paddingVertical: spacing.sm }}><Text style={{ color: colors.muted }}>Подход {set.setIndex} · далее</Text></View>;
+                }
+
                 return (
-                <View key={set.id} style={{ gap: 8 }}>
-                  <Text style={{ color: colors.muted }}>Set {set.setIndex}</Text>
+                <View key={set.id} style={{ gap: 10, backgroundColor: colors.secondarySurface, borderRadius: 14, padding: spacing.md }}>
+                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12, letterSpacing: 1 }}>СЕЙЧАС · ПОДХОД {set.setIndex} / {exercise.sets.length}</Text>
                   {exercise.metricType === 'reps' ? (
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <View style={{ flex: 1 }}>
                       <TextField
                         editable={setEditable}
                         keyboardType="numeric"
-                        label="Weight"
+                        label="Вес, кг"
                         onChangeText={value =>
                           setEdits(current => ({
                             ...current,
@@ -571,7 +598,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                       <TextField
                         editable={setEditable}
                         keyboardType="numeric"
-                        label="Reps"
+                        label="Повторения"
                         onChangeText={value =>
                           setEdits(current => ({
                             ...current,
@@ -588,7 +615,7 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                   ) : (
                     <TextField
                       editable={setEditable}
-                      label="Time (mm:ss)"
+                      label="Время (мм:сс)"
                       onChangeText={value =>
                         setEdits(current => ({
                           ...current,
@@ -601,30 +628,19 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                       value={edits[set.id]?.durationInput ?? ''}
                     />
                   )}
-                  {!set.completed ? (
-                    <EffortPicker
-                      value={edits[set.id]?.effort ?? 'moderate'}
-                      onChange={effort =>
-                        setEdits(current => ({
-                          ...current,
-                          [set.id]: { ...(current[set.id] ?? emptySetEdit()), effort },
-                        }))
-                      }
-                    />
-                  ) : null}
-                  {set.completed ? (
-                    <CompletedSetSummary
-                      activeRemainingSec={activeRestSetId === set.id ? activeRestRemainingSec : null}
-                      exercise={exercise}
-                      onEdit={() => openSetEdit(exercise, set, restLabel !== null)}
-                      restLabel={restLabel}
-                      set={set}
-                    />
-                  ) : (
-                    exercise.metricType === 'duration' ? (
+                  <EffortPicker
+                    value={edits[set.id]?.effort ?? 'moderate'}
+                    onChange={effort =>
+                      setEdits(current => ({
+                        ...current,
+                        [set.id]: { ...(current[set.id] ?? emptySetEdit()), effort },
+                      }))
+                    }
+                  />
+                  {exercise.metricType === 'duration' ? (
                       <>
                         <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800' }}>
-                          Exercise timer: {formatDuration(
+                          Таймер упражнения: {formatDuration(
                             activeExerciseSetId === set.id
                               ? Math.max(
                                   0,
@@ -635,21 +651,19 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
                         </Text>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                           <View style={{ flex: 1 }}>
-                            <Button disabled={!canCompleteInOrder} onPress={() => completeSet(set.id)}>Complete set</Button>
+                            <Button onPress={() => completeSet(set.id)}>Завершить подход</Button>
                           </View>
                           <View style={{ flex: 1 }}>
                             <Button
                               onPress={() => void toggleExerciseTimer(set)}
-                              disabled={!canCompleteInOrder}
                               variant={activeExerciseSetId === set.id ? 'secondary' : 'primary'}>
-                              {activeExerciseSetId === set.id ? 'Stop time' : 'Start time'}
+                              {activeExerciseSetId === set.id ? 'Стоп' : 'Запустить таймер'}
                             </Button>
                           </View>
                         </View>
                       </>
-                    ) : (
-                      <Button disabled={!canCompleteInOrder} onPress={() => completeSet(set.id)}>Complete set</Button>
-                    )
+                  ) : (
+                    <Button onPress={() => completeSet(set.id)}>Завершить подход</Button>
                   )}
                 </View>
                 );
@@ -674,17 +688,17 @@ export const WorkoutSessionPage = ({ route, navigation }: Props) => {
               />
             </Card>
             </View>
-          ))}
+          )))}
           <Card>
-            <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Workout comment</Text>
+            <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Комментарий к тренировке</Text>
             <TextField
-              label="Comment for this workout"
+              label="Комментарий"
               onChangeText={setWorkoutComment}
               value={workoutComment}
             />
           </Card>
-          <Button disabled={isFinishing} onPress={finish}>{isFinishing ? 'Finishing…' : 'Finish workout'}</Button>
-          <Button onPress={confirmCancelWorkout} variant="danger">Cancel workout</Button>
+          <Button disabled={isFinishing} onPress={finish}>{isFinishing ? 'Завершение…' : 'Завершить тренировку'}</Button>
+          <Button onPress={confirmCancelWorkout} variant="danger">Отменить тренировку</Button>
         </View>
       </ScrollView>
       <ExerciseInfoModal
@@ -869,9 +883,9 @@ const CompletedSetSummary = ({ activeRemainingSec, exercise, onEdit, restLabel, 
   const running = Boolean(set.restStartedAt && !set.restFinishedAt);
   const displaySec = running ? activeRemainingSec : set.restDurationSec;
   const restText = restLabel
-    ? `${restLabel}: ${displaySec !== null ? formatDuration(displaySec) : 'not logged'}`
-    : 'No rest';
-  const statusText = running ? 'Running' : displaySec !== null ? 'Locked' : 'Completed';
+    ? `${restLabel}: ${displaySec !== null ? formatDuration(displaySec) : 'не записан'}`
+    : 'Без отдыха';
+  const statusText = running ? 'Идёт' : displaySec !== null ? 'Записан' : 'Завершён';
 
   return (
     <View
@@ -888,11 +902,11 @@ const CompletedSetSummary = ({ activeRemainingSec, exercise, onEdit, restLabel, 
       }}>
       <View style={{ flex: 1, gap: 2 }}>
         <View style={{ alignItems: 'center', flexDirection: 'row', gap: 8 }}>
-          <Text style={{ color: colors.success, fontSize: 13, fontWeight: '900' }}>Completed</Text>
+          <Text style={{ color: colors.success, fontSize: 13, fontWeight: '900' }}>Готово</Text>
           <Text style={{ color: colors.text, fontSize: 15, fontWeight: '900' }}>
             {exercise.metricType === 'duration'
               ? formatDuration(set.actualDurationSec)
-              : `${set.actualWeight} x ${set.actualReps}`}
+              : `${set.actualWeight} кг × ${set.actualReps}`}
           </Text>
         </View>
         <View style={{ alignItems: 'center', flexDirection: 'row', gap: 8 }}>
@@ -902,7 +916,7 @@ const CompletedSetSummary = ({ activeRemainingSec, exercise, onEdit, restLabel, 
           <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '700' }}>{statusText}</Text>
           {set.effort ? (
             <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '700' }}>
-              Effort: {set.effort}
+              Усилие: {set.effort}
             </Text>
           ) : null}
         </View>
@@ -927,10 +941,10 @@ const CompletedSetSummary = ({ activeRemainingSec, exercise, onEdit, restLabel, 
 };
 
 const effortOptions: Array<{ label: string; value: SetEffort }> = [
-  { label: 'Easy', value: 'easy' },
-  { label: 'Normal', value: 'moderate' },
-  { label: 'Hard', value: 'hard' },
-  { label: 'Failure', value: 'failure' },
+  { label: 'Легко', value: 'easy' },
+  { label: 'Нормально', value: 'moderate' },
+  { label: 'Тяжело', value: 'hard' },
+  { label: 'До отказа', value: 'failure' },
 ];
 
 const EffortPicker = ({
@@ -942,7 +956,7 @@ const EffortPicker = ({
 }) => {
   const colors = useThemeColors();
   const [expanded, setExpanded] = useState(false);
-  const selectedLabel = effortOptions.find(option => option.value === value)?.label ?? 'Normal';
+  const selectedLabel = effortOptions.find(option => option.value === value)?.label ?? 'Нормально';
 
   return (
     <View style={{ gap: 4 }}>

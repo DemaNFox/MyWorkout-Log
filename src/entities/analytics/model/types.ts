@@ -1,8 +1,10 @@
 import type { TrendDirection } from '@shared/types/domain';
+import type { ExerciseMetricType } from '@shared/types/domain';
 
 export interface AnalyticsExercise {
   exerciseId: string | null;
   name: string;
+  metricType?: ExerciseMetricType;
 }
 
 export interface ExerciseHistoryRow {

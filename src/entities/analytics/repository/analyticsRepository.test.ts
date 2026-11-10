@@ -16,6 +16,7 @@ class AnalyticsDatabaseStub implements Database {
         {
           exercise_id: 'custom-landmine-press',
           name_snapshot: 'Landmine press',
+          metric_type: 'reps',
         },
       ] as T[];
     }
@@ -57,6 +58,7 @@ describe('AnalyticsRepository', () => {
     expect(exercise).toEqual({
       exerciseId: 'custom-landmine-press',
       name: 'Landmine press',
+      metricType: 'reps',
     });
     await expect(repository.getExerciseHistory(exercise as AnalyticsExercise)).resolves.toEqual([
       expect.objectContaining({

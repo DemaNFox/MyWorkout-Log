@@ -28,14 +28,14 @@ export const WorkoutDetailsPage = ({ route }: Props) => {
   }, [load]);
 
   if (!details) {
-    return <Screen title="Workout"><EmptyState text="Workout not found." /></Screen>;
+    return <Screen title="Тренировка"><EmptyState text="Тренировка не найдена." /></Screen>;
   }
 
   return (
-    <Screen title={details.session.trainingDayNameSnapshot ?? 'Workout'}>
+    <Screen title={details.session.trainingDayNameSnapshot ?? 'Тренировка'} eyebrow="История" subtitle={details.session.startedAt?.slice(0, 10) ?? ''}>
       {details.session.comment ? (
         <Card>
-          <Text style={{ color: colors.muted, fontWeight: '700' }}>Workout comment</Text>
+          <Text style={{ color: colors.muted, fontWeight: '700' }}>Комментарий к тренировке</Text>
           <Text style={{ color: colors.text }}>{details.session.comment}</Text>
         </Card>
       ) : null}
@@ -47,11 +47,11 @@ export const WorkoutDetailsPage = ({ route }: Props) => {
           ) : null}
           {exercise.sets.map(set => (
             <Text key={set.id} style={{ color: colors.text }}>
-              Set {set.setIndex}:{' '}
+              Подход {set.setIndex}:{' '}
               {exercise.metricType === 'duration'
                 ? formatDuration(set.actualDurationSec)
-                : `${set.actualWeight} x ${set.actualReps}`}{' '}
-              {set.completed ? 'done' : 'open'}
+                : `${set.actualWeight} кг × ${set.actualReps}`}{' '}
+              {set.completed ? '✓' : '—'}
             </Text>
           ))}
         </Card>

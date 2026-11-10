@@ -12,9 +12,7 @@ export const Card = ({ children }: PropsWithChildren) => {
     <View
       style={{
         backgroundColor: colors.surface,
-        borderColor: colors.border,
-        borderRadius: 8,
-        borderWidth: 1,
+        borderRadius: 18,
         padding: layout.cardPadding,
         gap: spacing.md,
       }}>

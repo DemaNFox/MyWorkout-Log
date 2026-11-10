@@ -14,6 +14,8 @@ The app is intentionally focused on three jobs:
 - run and log a workout;
 - review history and exercise progress.
 
+The bottom navigation has four sections: Today, Programs, History, and Progress. The exercise catalog and Settings are available from the icons on Today. During a workout, the current exercise stays expanded while other exercises can be opened on demand.
+
 It does not include accounts, backend sync, social features, nutrition tracking, AI coaching, videos, push notifications, or wearable integrations.
 
 ## Stack
@@ -72,6 +74,7 @@ History and analytics are not separate storage layers. They are views/calculatio
 
 - History lists finished workout sessions for the active plan.
 - Analytics calculates exercise progress from completed sets for the active plan.
+- Progress defaults to a repetition-based exercise and lets you switch between weight and repetition charts. Timed exercises remain selectable, but duration analytics is not yet implemented.
 - Deleting a workout from history removes it from SQLite, so analytics is recalculated without it.
 
 During a workout, the information button in an exercise card opens its cross-program progress,

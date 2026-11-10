@@ -1,44 +1,49 @@
-import { useCallback, useState } from 'react';
-import { Alert, Text } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useCallback, useState } from "react";
+import { Alert, Pressable, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import type { RootStackParamList } from '@app/navigation/types';
-import { PlanRepository } from '@entities/plan/repository/planRepository';
-import type { Plan } from '@entities/plan/model/types';
-import type { TrainingDay } from '@entities/training-day/model/types';
-import { TrainingDayRepository } from '@entities/training-day/repository/trainingDayRepository';
-import { WorkoutRepository } from '@entities/workout/repository/workoutRepository';
-import type { WorkoutSession } from '@entities/workout/model/types';
-import { StartWorkoutService } from '@features/workout-start/model/startWorkoutService';
-import { useDatabase } from '@app/providers/DatabaseProvider';
-import { WorkoutSummaryCard } from '@widgets/workout-summary-card/WorkoutSummaryCard';
-import { Button } from '@shared/ui/Button';
-import { Card } from '@shared/ui/Card';
-import { EmptyState } from '@shared/ui/EmptyState';
-import { Screen } from '@shared/ui/Screen';
-import { useThemeColors } from '@shared/ui/theme';
+import type { RootStackParamList } from "@app/navigation/types";
+import { useDatabase } from "@app/providers/DatabaseProvider";
+import type { Plan } from "@entities/plan/model/types";
+import { PlanRepository } from "@entities/plan/repository/planRepository";
+import type { TrainingDay } from "@entities/training-day/model/types";
+import { TrainingDayRepository } from "@entities/training-day/repository/trainingDayRepository";
+import type { WorkoutSession } from "@entities/workout/model/types";
+import { WorkoutRepository } from "@entities/workout/repository/workoutRepository";
+import { StartWorkoutService } from "@features/workout-start/model/startWorkoutService";
+import { formatDuration } from "@shared/lib/date";
+import { Card } from "@shared/ui/Card";
+import { EmptyState } from "@shared/ui/EmptyState";
+import { Screen } from "@shared/ui/Screen";
+import { spacing, useThemeColors } from "@shared/ui/theme";
 
 export const HomePage = () => {
   const db = useDatabase();
   const colors = useThemeColors();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
   const [trainingDays, setTrainingDays] = useState<TrainingDay[]>([]);
-  const [activeWorkout, setActiveWorkout] = useState<WorkoutSession | null>(null);
-  const [lastWorkout, setLastWorkout] = useState<WorkoutSession | null>(null);
+  const [activeWorkout, setActiveWorkout] = useState<WorkoutSession | null>(
+    null,
+  );
+  const [recentWorkouts, setRecentWorkouts] = useState<WorkoutSession[]>([]);
 
   const load = useCallback(async () => {
     const workoutRepository = new WorkoutRepository(db);
-    const nextActivePlan = await new PlanRepository(db).getActive();
-    setActivePlan(nextActivePlan);
+    const plan = await new PlanRepository(db).getActive();
+    setActivePlan(plan);
     setTrainingDays(
-      nextActivePlan
-        ? await new TrainingDayRepository(db).listDays(nextActivePlan.id)
-        : [],
+      plan ? await new TrainingDayRepository(db).listDays(plan.id) : [],
     );
     setActiveWorkout(await workoutRepository.getOpenSessionForActivePlan());
-    setLastWorkout((await workoutRepository.listSessionsForActivePlan(10)).find(session => session.finishedAt) ?? null);
+    setRecentWorkouts(
+      (await workoutRepository.listSessionsForActivePlan(10))
+        .filter((session) => session.finishedAt)
+        .slice(0, 2),
+    );
   }, [db]);
 
   useFocusEffect(
@@ -47,61 +52,216 @@ export const HomePage = () => {
     }, [load]),
   );
 
-  const startWorkout = async (dayId: string) => {
+  const openWorkout = async (dayId: string) => {
     try {
-      const openSession = await new WorkoutRepository(db).getOpenSessionForActivePlan();
-      if (openSession) {
-        navigation.navigate('WorkoutSession', { workoutId: openSession.id });
-        return;
-      }
-      const session = await new StartWorkoutService(db).startFromActivePlan(dayId);
-      navigation.navigate('WorkoutSession', { workoutId: session.id });
+      const openSession = await new WorkoutRepository(
+        db,
+      ).getOpenSessionForActivePlan();
+      const session =
+        openSession ??
+        (await new StartWorkoutService(db).startFromActivePlan(dayId));
+      navigation.navigate("WorkoutSession", { workoutId: session.id });
     } catch (error) {
-      Alert.alert('Cannot start workout', error instanceof Error ? error.message : 'Unknown error');
+      Alert.alert(
+        "Не удалось начать тренировку",
+        error instanceof Error ? error.message : "Неизвестная ошибка",
+      );
     }
   };
 
+  const primaryDay = trainingDays[0];
+
   return (
-    <Screen title="Today">
-      <Card>
-        <Text style={{ color: colors.muted, fontWeight: '700' }}>Active plan</Text>
-        {activePlan ? (
-          <>
-            <Text style={{ color: colors.text, fontSize: 22, fontWeight: '800' }}>{activePlan.name}</Text>
-            {activeWorkout ? (
-              <Button onPress={() => navigation.navigate('WorkoutSession', { workoutId: activeWorkout.id })}>
-                Continue {activeWorkout.trainingDayNameSnapshot ?? 'workout'}
-              </Button>
-            ) : trainingDays.length > 0 ? (
-              <>
-                <Text style={{ color: colors.muted }}>Choose a training day:</Text>
-                {trainingDays.map(day => (
-                  <Button key={day.id} onPress={() => startWorkout(day.id)}>
-                    Start {day.name}
-                  </Button>
-                ))}
-              </>
-            ) : (
-              <EmptyState text="Add at least one training day to the active plan." />
-            )}
-          </>
+    <Screen
+      title="Хорошая тренировка начинается здесь."
+      eyebrow="Сегодня"
+      subtitle={
+        activePlan
+          ? `Программа «${activePlan.name}»`
+          : "Планируй, тренируйся и следи за прогрессом."
+      }
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "flex-end",
+          gap: spacing.sm,
+        }}
+      >
+        <Pressable
+          accessibilityLabel="Упражнения"
+          accessibilityRole="button"
+          onPress={() => navigation.navigate("Exercises")}
+          style={{
+            backgroundColor: colors.surface,
+            borderRadius: 12,
+            padding: 12,
+          }}
+        >
+          <Ionicons name="barbell-outline" color={colors.primary} size={20} />
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Настройки"
+          accessibilityRole="button"
+          onPress={() => navigation.navigate("Settings")}
+          style={{
+            backgroundColor: colors.surface,
+            borderRadius: 12,
+            padding: 12,
+          }}
+        >
+          <Ionicons name="settings-outline" color={colors.primary} size={20} />
+        </Pressable>
+      </View>
+      <View
+        style={{
+          backgroundColor: colors.primary,
+          borderRadius: 20,
+          padding: 20,
+          gap: spacing.md,
+        }}
+      >
+        <Text
+          style={{
+            color: colors.primaryText,
+            opacity: 0.8,
+            fontSize: 11,
+            fontWeight: "800",
+            letterSpacing: 1.3,
+          }}
+        >
+          {activeWorkout ? "ТРЕНИРОВКА В ПРОЦЕССЕ" : "АКТИВНАЯ ПРОГРАММА"}
+        </Text>
+        <Text
+          style={{ color: colors.primaryText, fontSize: 24, fontWeight: "800" }}
+        >
+          {activeWorkout?.trainingDayNameSnapshot ??
+            primaryDay?.name ??
+            activePlan?.name ??
+            "Начни с программы"}
+        </Text>
+        <Text style={{ color: colors.primaryText, opacity: 0.8 }}>
+          {activePlan?.name ?? "Создай первую программу, чтобы начать"}
+        </Text>
+        {activeWorkout ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() =>
+              navigation.navigate("WorkoutSession", {
+                workoutId: activeWorkout.id,
+              })
+            }
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: 12,
+              minHeight: 48,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: colors.secondaryText, fontWeight: "800" }}>
+              Продолжить тренировку
+            </Text>
+          </Pressable>
+        ) : primaryDay ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void openWorkout(primaryDay.id)}
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: 12,
+              minHeight: 48,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: colors.secondaryText, fontWeight: "800" }}>
+              Начать тренировку
+            </Text>
+          </Pressable>
         ) : (
-          <EmptyState text="Create and activate a plan to start logging workouts offline." />
-        )}
-      </Card>
-      {activeWorkout ? (
-        <Card>
-          <Text style={{ color: colors.muted, fontWeight: '700' }}>Active workout</Text>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>
-            {activeWorkout.trainingDayNameSnapshot ?? 'Workout'}
+          <Text style={{ color: colors.primaryText }}>
+            {activePlan
+              ? "Добавь тренировочный день в программу."
+              : "Создай программу на вкладке «Программы»."}
           </Text>
-          <Text style={{ color: colors.muted }}>{activeWorkout.planNameSnapshot ?? 'Current program'}</Text>
-          <Button onPress={() => navigation.navigate('WorkoutSession', { workoutId: activeWorkout.id })}>
-            Continue
-          </Button>
-        </Card>
+        )}
+      </View>
+      {!activeWorkout && trainingDays.length > 1 ? (
+        <View style={{ gap: spacing.sm }}>
+          <Text style={{ color: colors.text, fontSize: 17, fontWeight: "800" }}>
+            Другие дни
+          </Text>
+          {trainingDays.slice(1).map((day) => (
+            <Pressable
+              key={day.id}
+              accessibilityRole="button"
+              onPress={() => void openWorkout(day.id)}
+            >
+              <Card>
+                <Text style={{ color: colors.text, fontWeight: "700" }}>
+                  {day.name}
+                </Text>
+              </Card>
+            </Pressable>
+          ))}
+        </View>
       ) : null}
-      <WorkoutSummaryCard session={lastWorkout} />
+      <Text style={{ color: colors.text, fontSize: 17, fontWeight: "800" }}>
+        Последние тренировки
+      </Text>
+      {recentWorkouts.length === 0 ? (
+        <Card>
+          <EmptyState text="После первой тренировки здесь появится история." />
+        </Card>
+      ) : (
+        recentWorkouts.map((session) => (
+          <Pressable
+            key={session.id}
+            accessibilityRole="button"
+            onPress={() =>
+              navigation.navigate("WorkoutDetails", { workoutId: session.id })
+            }
+          >
+            <Card>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.md,
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: colors.secondarySurface,
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="checkmark" size={20} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontWeight: "800" }}>
+                    {session.trainingDayNameSnapshot ?? "Тренировка"}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>
+                    {session.startedAt?.slice(0, 10)} ·{" "}
+                    {formatDuration(session.durationSec)}
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={colors.muted}
+                />
+              </View>
+            </Card>
+          </Pressable>
+        ))
+      )}
     </Screen>
   );
 };

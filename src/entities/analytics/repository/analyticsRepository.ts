@@ -30,8 +30,8 @@ export class AnalyticsRepository {
       return [];
     }
 
-    const rows = await this.db.getAll<{ exercise_id: string | null; name_snapshot: string }>(
-      `SELECT we.exercise_id, MAX(we.name_snapshot) AS name_snapshot
+    const rows = await this.db.getAll<{ exercise_id: string | null; name_snapshot: string; metric_type: AnalyticsExercise['metricType'] | null }>(
+      `SELECT we.exercise_id, MAX(we.name_snapshot) AS name_snapshot, MAX(we.metric_type) AS metric_type
        FROM workout_exercises we
        JOIN workout_sessions ws ON ws.id = we.workout_session_id
        JOIN workout_sets wset ON wset.workout_exercise_id = we.id
@@ -48,6 +48,7 @@ export class AnalyticsRepository {
     return rows.map(row => ({
       exerciseId: row.exercise_id,
       name: (row.exercise_id ? getExerciseById(row.exercise_id)?.name : undefined) ?? row.name_snapshot,
+      ...(row.metric_type ? { metricType: row.metric_type } : {}),
     }));
   }
 

@@ -82,6 +82,7 @@ export const ExercisesPage = () => {
   const [query, setQuery] = useState('');
   const [form, setForm] = useState<CustomExerciseInput>(emptyForm());
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   const load = useCallback(async () => {
     setExercises(await new ExerciseCatalogRepository(db).list());
@@ -100,6 +101,7 @@ export const ExercisesPage = () => {
         await repository.create(form);
       }
       setEditingId(null);
+      setShowForm(false);
       setForm(emptyForm());
       await load();
     } catch (error) {
@@ -108,6 +110,7 @@ export const ExercisesPage = () => {
   };
 
   const edit = (exercise: Exercise) => {
+    setShowForm(true);
     setEditingId(exercise.id);
     setForm({
       name: exercise.name,
@@ -142,12 +145,13 @@ export const ExercisesPage = () => {
   );
 
   return (
-    <Screen title="Exercises">
-      <Card>
+    <Screen title="Упражнения" eyebrow="Каталог" subtitle="Выбирай готовые или добавляй свои.">
+      <Button onPress={() => { setEditingId(null); setForm(emptyForm()); setShowForm(current => !current); }} variant="secondary">{showForm ? 'Закрыть форму' : '+ Своё упражнение'}</Button>
+      {showForm ? <Card>
         <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>
-          {editingId ? 'Edit custom exercise' : 'New custom exercise'}
+          {editingId ? 'Изменить упражнение' : 'Новое упражнение'}
         </Text>
-        <TextField label="Name" onChangeText={name => setForm(current => ({ ...current, name }))} value={form.name} />
+        <TextField label="Название" onChangeText={name => setForm(current => ({ ...current, name }))} value={form.name} />
         <OptionPicker
           label="Equipment"
           onChange={equipmentType =>
@@ -199,7 +203,7 @@ export const ExercisesPage = () => {
           value={form.movementType}
         />
         <Button disabled={!form.name.trim()} onPress={() => void save()}>
-          {editingId ? 'Save changes' : 'Create exercise'}
+          {editingId ? 'Сохранить изменения' : 'Создать упражнение'}
         </Button>
         {editingId ? (
           <Button
@@ -208,12 +212,12 @@ export const ExercisesPage = () => {
               setForm(emptyForm());
             }}
             variant="secondary">
-            Cancel editing
+            Отмена
           </Button>
         ) : null}
-      </Card>
+      </Card> : null}
 
-      <TextField label="Search exercises" onChangeText={setQuery} value={query} />
+      <TextField label="Поиск упражнений" onChangeText={setQuery} value={query} />
       {visibleExercises.map(exercise => (
         <Card key={exercise.id}>
           <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'space-between' }}>
@@ -228,13 +232,13 @@ export const ExercisesPage = () => {
               </Text>
             </View>
             <Text style={{ color: exercise.isCustom ? colors.primary : colors.muted, fontWeight: '700' }}>
-              {exercise.isCustom ? 'Custom' : 'Built-in'}
+              {exercise.isCustom ? 'Своё' : 'Каталог'}
             </Text>
           </View>
           {exercise.isCustom ? (
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <View style={{ flex: 1 }}><Button onPress={() => edit(exercise)} variant="secondary">Edit</Button></View>
-              <View style={{ flex: 1 }}><Button onPress={() => confirmDelete(exercise)} variant="danger">Delete</Button></View>
+              <View style={{ flex: 1 }}><Button onPress={() => edit(exercise)} variant="secondary">Изменить</Button></View>
+              <View style={{ flex: 1 }}><Button onPress={() => confirmDelete(exercise)} variant="danger">Удалить</Button></View>
             </View>
           ) : null}
         </Card>

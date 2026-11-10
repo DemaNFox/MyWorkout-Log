@@ -23,7 +23,7 @@ export const Button = ({ children, onPress, variant = 'primary', disabled = fals
       style={({ pressed }) => [
         {
           minHeight: layout.controlMinHeight,
-          borderRadius: 8,
+          borderRadius: 12,
           alignItems: 'center',
           justifyContent: 'center',
           paddingHorizontal: layout.compact ? spacing.md : spacing.lg,

@@ -48,6 +48,7 @@ export const SettingsPage = () => {
   const [exportText, setExportText] = useState('');
   const [exportFileName, setExportFileName] = useState<string | null>(null);
   const [operationFeedback, setOperationFeedback] = useState<OperationFeedback | null>(null);
+  const [expandedSection, setExpandedSection] = useState<'training' | 'appearance' | 'data' | null>(null);
 
   useEffect(() => {
     void new SettingsRepository(db).get().then(nextSettings => {
@@ -309,9 +310,11 @@ export const SettingsPage = () => {
   ));
 
   return (
-    <Screen title="Settings">
+    <Screen title="Настройки" eyebrow="Приложение" subtitle="Всё для комфортной тренировки.">
+      <Pressable accessibilityRole="button" onPress={() => setExpandedSection(current => current === 'training' ? null : 'training')}><Card><Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>Тренировка  {expandedSection === 'training' ? '⌃' : '⌄'}</Text><Text style={{ color: colors.muted }}>Отдых, звук и уведомления</Text></Card></Pressable>
+      {expandedSection === 'training' ? <>
       <Card>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Defaults</Text>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Отдых</Text>
         <Text style={{ color: colors.muted }}>
           Unit: {settings?.weightUnit ?? 'kg'} - Rest: {settings?.defaultRestSec ?? 90}s
         </Text>
@@ -330,17 +333,12 @@ export const SettingsPage = () => {
           ))}
         </View>
         <Button onPress={() => void saveRestPresets()} variant="secondary">
-          Save rest presets
+          Сохранить интервалы отдыха
         </Button>
       </Card>
 
       <Card>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Theme</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>{themeButtons}</View>
-      </Card>
-
-      <Card>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Timer alert</Text>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Оповещение таймера</Text>
         <Text style={{ color: colors.muted }}>
           Sound uses the selected system alarm tone when the rest timer reaches zero.
         </Text>
@@ -382,23 +380,33 @@ export const SettingsPage = () => {
           />
         </View>
       </Card>
+      </> : null}
 
+      <Pressable accessibilityRole="button" onPress={() => setExpandedSection(current => current === 'appearance' ? null : 'appearance')}><Card><Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>Внешний вид  {expandedSection === 'appearance' ? '⌃' : '⌄'}</Text><Text style={{ color: colors.muted }}>Тема: {settings?.themeMode === 'dark' ? 'тёмная' : 'светлая'}</Text></Card></Pressable>
+      {expandedSection === 'appearance' ? <Card>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Тема</Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>{themeButtons}</View>
+      </Card> : null}
+
+      <Pressable accessibilityRole="button" onPress={() => setExpandedSection(current => current === 'data' ? null : 'data')}><Card><Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>Данные  {expandedSection === 'data' ? '⌃' : '⌄'}</Text><Text style={{ color: colors.muted }}>Импорт, экспорт и резервная копия</Text></Card></Pressable>
+      {expandedSection === 'data' ? <>
       <Card>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Import JSON</Text>
-        <Button onPress={() => void importJsonFile()}>Import JSON file</Button>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Импорт JSON</Text>
+        <Button onPress={() => void importJsonFile()}>Выбрать файл JSON</Button>
         <TextField label="JSON" onChangeText={setImportText} value={importText} />
-        <Button disabled={!importText.trim()} onPress={importJson}>Import</Button>
+        <Button disabled={!importText.trim()} onPress={importJson}>Импортировать</Button>
       </Card>
 
       <Card>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Backup</Text>
-        <Button onPress={() => void openExportPicker('programs')}>Export programs JSON</Button>
-        <Button onPress={() => void openExportPicker('history')}>Export program history JSON</Button>
-        <Button onPress={() => void exportExerciseComments()}>Export exercise comments JSON</Button>
-        <Button onPress={backup}>Create backup JSON</Button>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Экспорт</Text>
+        <Button onPress={() => void openExportPicker('programs')}>Экспорт программ</Button>
+        <Button onPress={() => void openExportPicker('history')}>Экспорт истории</Button>
+        <Button onPress={() => void exportExerciseComments()}>Экспорт комментариев</Button>
+        <Button onPress={backup}>Создать резервную копию</Button>
         {exportFileName ? <Text style={{ color: colors.muted }}>Saved file: {exportFileName}</Text> : null}
         {exportText ? <Text selectable style={{ color: colors.text, fontSize: 12 }}>{exportText}</Text> : null}
       </Card>
+      </> : null}
 
       <Modal animationType="fade" transparent visible={exportPickerVisible}>
         <View

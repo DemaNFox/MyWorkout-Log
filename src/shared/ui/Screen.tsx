@@ -6,10 +6,12 @@ import { spacing, useThemeColors } from './theme';
 
 interface ScreenProps extends PropsWithChildren {
   title: string;
+  eyebrow?: string;
+  subtitle?: string;
   bottomInset?: number;
 }
 
-export const Screen = ({ title, children, bottomInset = 48 }: ScreenProps) => {
+export const Screen = ({ title, eyebrow, subtitle, children, bottomInset = 48 }: ScreenProps) => {
   const colors = useThemeColors();
   const layout = useLayoutMetrics();
 
@@ -17,7 +19,9 @@ export const Screen = ({ title, children, bottomInset = 48 }: ScreenProps) => {
     <ScrollView
       contentContainerStyle={{ padding: layout.screenPadding, paddingBottom: bottomInset }}
       style={{ flex: 1, backgroundColor: colors.background }}>
-      <Text style={{ color: colors.text, fontSize: 28, fontWeight: '800', marginBottom: spacing.lg }}>{title}</Text>
+      {eyebrow ? <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: spacing.xs }}>{eyebrow.toUpperCase()}</Text> : null}
+      <Text style={{ color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.7 }}>{title}</Text>
+      {subtitle ? <Text style={{ color: colors.muted, marginTop: spacing.xs, marginBottom: spacing.lg }}>{subtitle}</Text> : <View style={{ height: spacing.lg }} />}
       <View style={{ gap: spacing.lg }}>{children}</View>
     </ScrollView>
   );

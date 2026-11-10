@@ -10,6 +10,7 @@ import { ExerciseProgressChart } from '@entities/analytics/ui/ExerciseProgressCh
 import { Card } from '@shared/ui/Card';
 import { EmptyState } from '@shared/ui/EmptyState';
 import { Screen } from '@shared/ui/Screen';
+import { TextField } from '@shared/ui/TextField';
 import { useThemeColors } from '@shared/ui/theme';
 
 export const AnalyticsPage = () => {
@@ -18,6 +19,8 @@ export const AnalyticsPage = () => {
   const [exercises, setExercises] = useState<AnalyticsExercise[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [history, setHistory] = useState<ExerciseHistoryRow[]>([]);
+  const [query, setQuery] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
   const selected =
     exercises.find(exercise => getExerciseKey(exercise) === selectedKey) ?? null;
 
@@ -60,6 +63,7 @@ export const AnalyticsPage = () => {
     const nextExercises = await repository.listExercises();
     const nextSelected =
       nextExercises.find(exercise => getExerciseKey(exercise) === selectedKey) ??
+      nextExercises.find(exercise => exercise.metricType !== 'duration') ??
       nextExercises[0] ??
       null;
     setExercises(nextExercises);
@@ -76,17 +80,21 @@ export const AnalyticsPage = () => {
   const chooseExercise = async (exercise: AnalyticsExercise) => {
     setSelectedKey(getExerciseKey(exercise));
     setHistory(await new AnalyticsRepository(db).getExerciseHistory(exercise));
+    setPickerOpen(false);
+    setQuery('');
   };
 
   return (
-    <Screen title="Analytics">
+    <Screen title="Прогресс" eyebrow="Динамика" subtitle="Результаты по упражнениям.">
       <Card>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Completed exercises</Text>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>{selected?.name ?? 'Выбери упражнение'}</Text>
+        <Pressable accessibilityRole="button" onPress={() => setPickerOpen(current => !current)}><Text style={{ color: colors.primary, fontWeight: '800' }}>Сменить упражнение ▾</Text></Pressable>
         {exercises.length === 0 ? (
-          <EmptyState text="Complete at least one set in a workout to see exercise analytics." />
+          <EmptyState text="Заверши хотя бы один подход, чтобы увидеть прогресс." />
         ) : null}
-        <View style={{ gap: 8 }}>
-          {exercises.map(exercise => {
+        {pickerOpen ? <TextField label="Поиск" onChangeText={setQuery} placeholder="Название упражнения" value={query} /> : null}
+        {pickerOpen ? <View style={{ gap: 8 }}>
+          {exercises.filter(exercise => exercise.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(exercise => {
             const key = getExerciseKey(exercise);
             const isSelected = selectedKey === key;
 
@@ -97,7 +105,7 @@ export const AnalyticsPage = () => {
               style={({ pressed }) => ({
                 minHeight: 44,
                 justifyContent: 'center',
-                borderRadius: 8,
+                borderRadius: 12,
                 borderWidth: isSelected ? 0 : 1,
                 borderColor: colors.secondaryBorder,
                 backgroundColor: isSelected ? colors.primary : colors.secondarySurface,
@@ -116,31 +124,33 @@ export const AnalyticsPage = () => {
             </Pressable>
             );
           })}
-        </View>
+        </View> : null}
       </Card>
 
-      {selected && best ? (
+      {selected?.metricType === 'duration' ? <Card><Text style={{ color: colors.text, fontWeight: '800' }}>Упражнение на время</Text><Text style={{ color: colors.muted }}>График длительности пока недоступен. Выполненные подходы сохранены в истории тренировок.</Text></Card> : null}
+
+      {selected?.metricType !== 'duration' && selected && best ? (
         <Card>
-          <Text style={{ color: colors.muted, fontWeight: '700' }}>Best working result</Text>
+          <Text style={{ color: colors.muted, fontWeight: '700' }}>ЛУЧШИЙ РАБОЧИЙ ПОДХОД</Text>
           <Text style={{ color: colors.text, fontSize: 24, fontWeight: '800' }}>
-            {best.bestWeight} x {best.repsAtBestWeight}
+            {best.bestWeight} кг × {best.repsAtBestWeight}
           </Text>
           {bestSingle ? (
             <Text style={{ color: colors.muted }}>
-              Single set PR: {bestSingle.bestSingleWeight} x {bestSingle.repsAtBestSingleWeight}
+              Лучший отдельный подход: {bestSingle.bestSingleWeight} кг × {bestSingle.repsAtBestSingleWeight}
             </Text>
           ) : null}
           <Text style={{ color: colors.muted }}>
-            {history.length} workout{history.length === 1 ? '' : 's'} logged for {selected.name}
+            Записано тренировок: {history.length}
           </Text>
         </Card>
       ) : null}
 
-      {history.length > 0 ? <ExerciseProgressChart rows={history} /> : null}
+      {selected?.metricType !== 'duration' && history.length > 0 ? <ExerciseProgressChart rows={history} /> : null}
 
-      {history.length > 0 ? (
+      {selected?.metricType !== 'duration' && history.length > 0 ? (
         <Card>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>History table</Text>
+          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Последние результаты</Text>
           <View
             style={{
               flexDirection: 'row',
@@ -149,10 +159,10 @@ export const AnalyticsPage = () => {
               paddingBottom: 8,
               gap: 8,
             }}>
-            <Text style={{ color: colors.muted, flex: 1, fontWeight: '800' }}>Date</Text>
-            <Text style={{ color: colors.muted, width: 82, fontWeight: '800' }}>Working</Text>
-            <Text style={{ color: colors.muted, width: 48, fontWeight: '800' }}>Sets</Text>
-            <Text style={{ color: colors.muted, width: 56, fontWeight: '800' }}>Trend</Text>
+            <Text style={{ color: colors.muted, flex: 1, fontWeight: '800' }}>Дата</Text>
+            <Text style={{ color: colors.muted, width: 82, fontWeight: '800' }}>Вес × повт.</Text>
+            <Text style={{ color: colors.muted, width: 48, fontWeight: '800' }}>Подх.</Text>
+            <Text style={{ color: colors.muted, width: 56, fontWeight: '800' }}>Тренд</Text>
           </View>
           {history.map(row => (
             <View
@@ -170,7 +180,7 @@ export const AnalyticsPage = () => {
                 {row.bestWeight} x {row.repsAtBestWeight}
               </Text>
               <Text style={{ color: colors.text, width: 48 }}>{row.completedSets}</Text>
-              <Text style={{ color: getTrendColor(row.trend), fontWeight: '800', width: 56 }}>{row.trend}</Text>
+              <Text style={{ color: getTrendColor(row.trend), fontWeight: '800', width: 56 }}>{row.trend === 'up' ? '↑ Рост' : row.trend === 'down' ? '↓ Спад' : '—'}</Text>
             </View>
           ))}
         </Card>

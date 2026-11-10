@@ -43,7 +43,7 @@ export const TextField = ({
           maxHeight: multiline ? 120 : undefined,
           backgroundColor: editable ? colors.surface : colors.secondarySurface,
           borderColor: colors.border,
-          borderRadius: 8,
+          borderRadius: 12,
           borderWidth: 1,
           color: colors.text,
           fontSize: 16,

@@ -26,6 +26,10 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
   const colors = useThemeColors();
   const [plan, setPlan] = useState<Plan | null>(null);
   const [days, setDays] = useState<TrainingDay[]>([]);
+  const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
+  const [addingDay, setAddingDay] = useState(false);
+  const [addingExerciseDayId, setAddingExerciseDayId] = useState<string | null>(null);
+  const [showPlanActions, setShowPlanActions] = useState(false);
   const [exercisesByDay, setExercisesByDay] = useState<Record<string, PlannedExercise[]>>({});
   const [dayName, setDayName] = useState('');
   const [exerciseName, setExerciseName] = useState('');
@@ -59,6 +63,7 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
     );
     setPlan(nextPlan);
     setDays(nextDays);
+    setSelectedDayId(current => current && nextDays.some(day => day.id === current) ? current : nextDays[0]?.id ?? null);
     setExercisesByDay(Object.fromEntries(pairs));
     setCatalogExercises(await new ExerciseCatalogRepository(db).list());
   }, [db, route.params.planId]);
@@ -69,8 +74,10 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
 
   const addDay = async () => {
     try {
-      await new TrainingDayRepository(db).createDay(route.params.planId, dayName);
+      const day = await new TrainingDayRepository(db).createDay(route.params.planId, dayName);
       setDayName('');
+      setSelectedDayId(day.id);
+      setAddingDay(false);
       await load();
     } catch (error) {
       Alert.alert('Cannot add day', error instanceof Error ? error.message : 'Unknown error');
@@ -106,6 +113,7 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
       });
       setExerciseName('');
       setExerciseNote('');
+      setAddingExerciseDayId(null);
       await load();
     } catch (error) {
       Alert.alert('Cannot add exercise', error instanceof Error ? error.message : 'Unknown error');
@@ -184,31 +192,30 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
 
   if (!plan) {
     return (
-      <Screen title="Plan">
-        <EmptyState text="Plan not found." />
+      <Screen title="Программа">
+        <EmptyState text="Программа не найдена." />
       </Screen>
     );
   }
 
   return (
-    <Screen title={plan.name}>
-      <Card>
-        <Text style={{ color: colors.muted }}>{plan.status}</Text>
+    <Screen title={plan.name} eyebrow="Программа" subtitle={`${plan.status === 'active' ? 'Активная программа' : 'Неактивная программа'} · ${days.length} дн.`}>
+      <Pressable accessibilityRole="button" onPress={() => setShowPlanActions(current => !current)} style={{ alignSelf: 'flex-end' }}><Text style={{ color: colors.primary, fontWeight: '800' }}>Действия с программой ▾</Text></Pressable>
+      {showPlanActions ? <Card>
         <Button disabled={plan.status === 'active'} onPress={activate} variant={plan.status === 'active' ? 'secondary' : 'primary'}>
-          {plan.status === 'active' ? 'Active' : 'Make active'}
+          {plan.status === 'active' ? 'Активна' : 'Сделать активной'}
         </Button>
-        <Button onPress={confirmDeletePlan} variant="danger">Delete plan</Button>
-      </Card>
-      <Card>
-        <TextField label="Training day" onChangeText={setDayName} placeholder="Day 1" value={dayName} />
-        <Button disabled={!dayName.trim()} onPress={addDay}>Add day</Button>
-      </Card>
-      {days.map(day => (
+        <Button onPress={confirmDeletePlan} variant="danger">Удалить программу</Button>
+      </Card> : null}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{days.map((day, index) => <Pressable key={day.id} accessibilityRole="button" onPress={() => setSelectedDayId(day.id)} style={{ backgroundColor: selectedDayId === day.id ? colors.primary : colors.surface, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }}><Text style={{ color: selectedDayId === day.id ? colors.primaryText : colors.text, fontWeight: '800' }}>День {index + 1}</Text></Pressable>)}</View>
+      <Pressable accessibilityRole="button" onPress={() => setAddingDay(current => !current)}><Text style={{ color: colors.primary, fontWeight: '800' }}>+ Добавить день</Text></Pressable>
+      {addingDay ? <Card><TextField label="Название дня" onChangeText={setDayName} placeholder="Верх тела" value={dayName} /><Button disabled={!dayName.trim()} onPress={addDay}>Добавить день</Button></Card> : null}
+      {days.filter(day => day.id === selectedDayId).map(day => (
         <Card key={day.id}>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>{day.name}</Text>
+          <Text style={{ color: colors.text, fontSize: 20, fontWeight: '800' }}>{day.name}</Text>
           {(exercisesByDay[day.id] ?? []).map(exercise => (
-            <View key={exercise.id} style={{ gap: 8 }}>
-              <Text style={{ color: colors.text }}>
+            <View key={exercise.id} style={{ gap: 8, borderBottomColor: colors.border, borderBottomWidth: 1, paddingVertical: 9 }}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>
                 {exercise.order}. {exercise.name} — {exercise.targetSets} ×{' '}
                 {exercise.metricType === 'duration'
                   ? formatExerciseDuration(exercise.targetDurationSec ?? 0)
@@ -229,7 +236,7 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
               </View>
             </View>
           ))}
-          <View style={{ gap: 8 }}>
+          {addingExerciseDayId === day.id ? <View style={{ gap: 8 }}>
             <TextField label="Exercise" onChangeText={setExerciseName} value={exerciseName} />
             {exerciseName.trim() && !findCatalogExercise(catalogExercises, exerciseName) ? (
               <View style={{ gap: 6 }}>
@@ -300,9 +307,9 @@ export const PlanDetailsPage = ({ route, navigation }: Props) => {
               )}
             </View>
             <Button disabled={!findCatalogExercise(catalogExercises, exerciseName)} onPress={() => addExercise(day.id)}>
-              Add exercise
+              Добавить упражнение
             </Button>
-          </View>
+          </View> : <Button onPress={() => setAddingExerciseDayId(day.id)} variant="secondary">+ Добавить упражнение</Button>}
         </Card>
       ))}
       <Modal animationType="fade" transparent visible={exerciseEdit !== null}>

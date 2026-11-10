@@ -69,23 +69,18 @@ export const HistoryPage = () => {
   };
 
   return (
-    <Screen title="History">
-      {sessions.length === 0 ? <EmptyState text="Completed workouts for the active plan will appear here." /> : null}
-      {sessions.length > 0 ? (
-        <Card>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>History actions</Text>
-          <Button onPress={confirmClearHistory} variant="danger">Clear history</Button>
-        </Card>
-      ) : null}
+    <Screen title="История" eyebrow="Журнал" subtitle="Завершённые тренировки активной программы.">
+      {sessions.length === 0 ? <EmptyState text="После первой тренировки здесь появится история." /> : null}
+      {sessions.length > 0 ? <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>Тренировки · {sessions.length}</Text> : null}
       {sessions.map(session => (
         <Card key={session.id}>
           <View style={{ alignItems: 'flex-start', flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>
+            <Pressable accessibilityRole="button" onPress={() => navigation.navigate('WorkoutDetails', { workoutId: session.id })} style={{ flex: 1, gap: 4 }}>
+              <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>
                 {session.trainingDayNameSnapshot ?? 'Workout'}
               </Text>
-              <Text style={{ color: colors.muted }}>{session.planNameSnapshot ?? 'No plan'}</Text>
-            </View>
+              <Text style={{ color: colors.muted }}>{session.planNameSnapshot ?? 'Программа'} · {formatDuration(session.durationSec)}</Text>
+            </Pressable>
             <Pressable
               accessibilityRole="button"
               onPress={() => setMenuSession(session)}
@@ -102,10 +97,11 @@ export const HistoryPage = () => {
               <MaterialIcons color={colors.secondaryText} name="more-vert" size={22} />
             </Pressable>
           </View>
-          <Text style={{ color: colors.muted }}>{session.startedAt?.slice(0, 10)} - {formatDuration(session.durationSec)}</Text>
-          <StatusBadge label={session.status === 'completed' ? 'Complete' : session.status} tone={session.status === 'completed' ? 'success' : 'neutral'} />
+          <Text style={{ color: colors.muted, fontSize: 12 }}>{session.startedAt?.slice(0, 10)}</Text>
+          <StatusBadge label={session.status === 'completed' ? 'Завершена' : session.status} tone={session.status === 'completed' ? 'success' : 'neutral'} />
         </Card>
       ))}
+      {sessions.length > 0 ? <Button onPress={confirmClearHistory} variant="danger">Очистить историю</Button> : null}
       <Modal animationType="fade" transparent visible={menuSession !== null}>
         <Pressable
           onPress={() => setMenuSession(null)}
@@ -138,7 +134,7 @@ export const HistoryPage = () => {
                 navigation.navigate('WorkoutDetails', { workoutId });
               }}
               variant="secondary">
-              Details
+              Детали
             </Button>
             <Button
               onPress={() => {
@@ -147,10 +143,10 @@ export const HistoryPage = () => {
                 }
               }}
               variant="danger">
-              Delete workout
+              Удалить тренировку
             </Button>
             <Button onPress={() => setMenuSession(null)} variant="secondary">
-              Cancel
+              Отмена
             </Button>
           </Pressable>
         </Pressable>

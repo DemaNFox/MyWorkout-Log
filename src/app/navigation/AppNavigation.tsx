@@ -26,10 +26,8 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 const tabIcons: Record<keyof MainTabParamList, { active: IoniconName; inactive: IoniconName }> = {
   Home: { active: 'today', inactive: 'today-outline' },
   Plans: { active: 'barbell', inactive: 'barbell-outline' },
-  Exercises: { active: 'fitness', inactive: 'fitness-outline' },
   History: { active: 'time', inactive: 'time-outline' },
   Analytics: { active: 'analytics', inactive: 'analytics-outline' },
-  Settings: { active: 'settings', inactive: 'settings-outline' },
 };
 
 const MainTabs = () => {
@@ -41,10 +39,13 @@ const MainTabs = () => {
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
-        tabBarLabelStyle: { fontSize: 12, fontWeight: '700' },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
+          height: 62,
+          paddingTop: 5,
+          paddingBottom: 5,
         },
         tabBarIcon: ({ color, focused, size }) => {
           const icon = tabIcons[route.name];
@@ -52,12 +53,10 @@ const MainTabs = () => {
           return <Ionicons name={focused ? icon.active : icon.inactive} size={size} color={color} />;
         },
       })}>
-      <Tabs.Screen name="Home" component={HomePage} options={{ title: 'Today' }} />
-      <Tabs.Screen name="Plans" component={PlansPage} />
-      <Tabs.Screen name="Exercises" component={ExercisesPage} />
-      <Tabs.Screen name="History" component={HistoryPage} />
-      <Tabs.Screen name="Analytics" component={AnalyticsPage} />
-      <Tabs.Screen name="Settings" component={SettingsPage} />
+      <Tabs.Screen name="Home" component={HomePage} options={{ title: 'Сегодня' }} />
+      <Tabs.Screen name="Plans" component={PlansPage} options={{ title: 'Программы' }} />
+      <Tabs.Screen name="History" component={HistoryPage} options={{ title: 'История' }} />
+      <Tabs.Screen name="Analytics" component={AnalyticsPage} options={{ title: 'Прогресс' }} />
     </Tabs.Navigator>
   );
 };
@@ -91,9 +90,11 @@ export const AppNavigation = () => {
           contentStyle: { backgroundColor: colors.background },
         }}>
         <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
-        <Stack.Screen name="PlanDetails" component={PlanDetailsPage} options={{ title: 'Plan' }} />
-        <Stack.Screen name="WorkoutSession" component={WorkoutSessionPage} options={{ title: 'Workout' }} />
-        <Stack.Screen name="WorkoutDetails" component={WorkoutDetailsPage} options={{ title: 'Workout details' }} />
+        <Stack.Screen name="PlanDetails" component={PlanDetailsPage} options={{ title: 'Программа' }} />
+        <Stack.Screen name="WorkoutSession" component={WorkoutSessionPage} options={{ title: 'Тренировка' }} />
+        <Stack.Screen name="WorkoutDetails" component={WorkoutDetailsPage} options={{ title: 'Детали тренировки' }} />
+        <Stack.Screen name="Exercises" component={ExercisesPage} options={{ title: 'Упражнения' }} />
+        <Stack.Screen name="Settings" component={SettingsPage} options={{ title: 'Настройки' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
