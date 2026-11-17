@@ -13,6 +13,7 @@ import { TrainingDayRepository } from "@entities/training-day/repository/trainin
 import type { WorkoutSession } from "@entities/workout/model/types";
 import { WorkoutRepository } from "@entities/workout/repository/workoutRepository";
 import { StartWorkoutService } from "@features/workout-start/model/startWorkoutService";
+import { ProgressTransferPrompt } from "@features/progress-transfer/ui/ProgressTransferPrompt";
 import { formatDuration } from "@shared/lib/date";
 import { Card } from "@shared/ui/Card";
 import { EmptyState } from "@shared/ui/EmptyState";
@@ -81,6 +82,7 @@ export const HomePage = () => {
           : "Планируй, тренируйся и следи за прогрессом."
       }
     >
+      <ProgressTransferPrompt db={db} />
       <View
         style={{
           flexDirection: "row",

@@ -13,6 +13,7 @@ import { workoutSessionCommentMigration } from './010_workout_session_comment';
 import { exerciseDataModelMigration } from './011_exercise_data_model';
 import { customExercisesMigration } from './012_custom_exercises';
 import { exerciseCommentHistoryMigration } from './013_exercise_comment_history';
+import { progressTransferMigration } from './014_progress_transfer';
 
 const migrations = [
   initialSchemaMigration,
@@ -28,6 +29,7 @@ const migrations = [
   exerciseDataModelMigration,
   customExercisesMigration,
   exerciseCommentHistoryMigration,
+  progressTransferMigration,
 ] as const;
 
 type MigrationRow = { id: number };

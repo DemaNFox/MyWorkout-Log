@@ -1,6 +1,7 @@
 import { PlanRepository } from '@entities/plan/repository/planRepository';
 import { TrainingDayRepository } from '@entities/training-day/repository/trainingDayRepository';
 import { WorkoutRepository } from '@entities/workout/repository/workoutRepository';
+import { ProgressTransferRepository } from '@entities/workout/repository/progressTransferRepository';
 import { ExerciseCommentRepository } from '@entities/exercise-comment/repository/exerciseCommentRepository';
 import type { WorkoutSession } from '@entities/workout/model/types';
 import type { Database } from '@shared/db/types';
@@ -10,12 +11,14 @@ export class StartWorkoutService {
   private readonly plans: PlanRepository;
   private readonly days: TrainingDayRepository;
   private readonly workouts: WorkoutRepository;
+  private readonly progressTransfer: ProgressTransferRepository;
   private readonly comments: ExerciseCommentRepository;
 
   constructor(db: Database) {
     this.plans = new PlanRepository(db);
     this.days = new TrainingDayRepository(db);
     this.workouts = new WorkoutRepository(db);
+    this.progressTransfer = new ProgressTransferRepository(db);
     this.comments = new ExerciseCommentRepository(db);
   }
 
@@ -40,11 +43,18 @@ export class StartWorkoutService {
       const currentComment = exercise.exerciseId
         ? await this.comments.getCurrent(exercise.exerciseId)
         : null;
-      const previousSets = await this.workouts.getLatestCompletedExerciseSets(
+      const completedSets = await this.workouts.getLatestCompletedExerciseSets(
         activePlan.id,
         exercise.id,
+        exercise.exerciseId,
         exercise.name,
+        exercise.metricType,
+        exercise.measurementType,
+        exercise.weightMode,
       );
+      const previousSets = completedSets.length > 0
+        ? completedSets
+        : await this.progressTransfer.getBaselineSets(exercise);
       const workoutExercise = await this.workouts.addExercise({
         workoutSessionId: session.id,
         sourcePlannedExerciseId: exercise.id,

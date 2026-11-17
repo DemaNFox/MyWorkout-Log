@@ -68,6 +68,8 @@ The app stores:
 - Edit planned exercises, including their metric type and targets.
 - Timed sets use an exercise timer independent from the rest timer.
 - Completing a set carries its edited values into the next pending set.
+- A new workout prefills editable set values from the latest completed matching exercise in the active program, including another day of that program. Stable exercise IDs take precedence over names; planned targets remain unchanged.
+- On the first opening of Today with matching results in another program, a one-time prompt offers to save those older sets as a starting baseline for the active program. Accepting affects newly started workouts only; completed results in the active program always take precedence. Declining is remembered. Existing workouts and history are not rewritten.
 - Canceling an active workout deletes the unfinished session after confirmation.
 
 History and analytics are not separate storage layers. They are views/calculations over the same local SQLite records:

@@ -148,6 +148,9 @@ export class MemoryDatabase implements Database {
     if (query.includes('where workout_exercise_id = ?')) {
       rows = rows.filter(row => row.workout_exercise_id === params[0]);
     }
+    if (query.includes('where planned_exercise_id = ?')) {
+      rows = rows.filter(row => row.planned_exercise_id === params[0]);
+    }
     if (query.includes('where exercise_id = ?')) {
       rows = rows.filter(row => row.exercise_id === params[0]);
     }

@@ -82,6 +82,15 @@ type TrainingDayRow = {
   plan_id: string;
 };
 
+export interface CompletedExerciseResult {
+  exerciseId: string | null;
+  name: string;
+  metricType: ExerciseMetricType;
+  measurementType: MeasurementType;
+  weightMode: WeightMode | null;
+  sets: WorkoutSet[];
+}
+
 const toSession = (row: SessionRow): WorkoutSession => ({
   id: row.id,
   sourcePlanId: row.source_plan_id,
@@ -434,23 +443,75 @@ export class WorkoutRepository {
   async getLatestCompletedExerciseSets(
     planId: string,
     sourcePlannedExerciseId: string,
+    exerciseId: string | null,
     exerciseName: string,
+    metricType: ExerciseMetricType,
+    measurementType: MeasurementType,
+    weightMode: WeightMode | null,
   ): Promise<WorkoutSet[]> {
-    const sessions = await this.listSessionsForPlan(planId, 100);
-    const normalizedExerciseName = normalizeName(exerciseName);
+    const rows = await this.db.getAll<SessionRow>(
+      'SELECT * FROM workout_sessions WHERE source_plan_id = ? ORDER BY started_at DESC',
+      [planId],
+    );
+    const sessions = rows.map(toSession);
     const relatedExerciseIds = new Set(
       await this.findRelatedPlannedExerciseIds(sourcePlannedExerciseId),
     );
+    return this.findLatestCompletedExerciseSets(sessions, relatedExerciseIds, exerciseId, exerciseName, metricType, measurementType, weightMode);
+  }
+
+  async listCompletedExerciseResultsOutsidePlan(currentPlanId: string): Promise<CompletedExerciseResult[]> {
+    const rows = await this.db.getAll<SessionRow>(
+      'SELECT * FROM workout_sessions WHERE status = ? ORDER BY started_at DESC',
+      ['completed'],
+    );
+    const results: CompletedExerciseResult[] = [];
+    for (const session of rows.map(toSession)) {
+      if (session.sourcePlanId === currentPlanId) {
+        continue;
+      }
+      for (const exercise of await this.listExercises(session.id)) {
+        const sets = (await this.listSets(exercise.id)).filter(set => set.completed);
+        if (sets.length > 0) {
+          results.push({
+            exerciseId: exercise.exerciseId,
+            name: exercise.nameSnapshot,
+            metricType: exercise.metricType,
+            measurementType: exercise.measurementType,
+            weightMode: exercise.weightMode,
+            sets,
+          });
+        }
+      }
+    }
+    return results;
+  }
+
+  private async findLatestCompletedExerciseSets(
+    sessions: WorkoutSession[],
+    relatedExerciseIds: Set<string>,
+    exerciseId: string | null,
+    exerciseName: string,
+    metricType: ExerciseMetricType,
+    measurementType: MeasurementType,
+    weightMode: WeightMode | null,
+  ): Promise<WorkoutSet[]> {
+    const normalizedExerciseName = normalizeName(exerciseName);
     for (const session of sessions) {
       if (session.status !== 'completed') {
         continue;
       }
       const exercises = await this.listExercises(session.id);
-      const exercise = exercises.find(candidate =>
-        (candidate.sourcePlannedExerciseId !== null &&
-          relatedExerciseIds.has(candidate.sourcePlannedExerciseId)) ||
-        normalizeName(candidate.nameSnapshot) === normalizedExerciseName,
-      );
+      const exercise = exercises.find(candidate => {
+        if (candidate.metricType !== metricType || candidate.measurementType !== measurementType ||
+            (measurementType === 'weight_reps' && candidate.weightMode !== weightMode) ||
+            (exerciseId !== null && candidate.exerciseId !== null && candidate.exerciseId !== exerciseId)) {
+          return false;
+        }
+        return (candidate.sourcePlannedExerciseId !== null && relatedExerciseIds.has(candidate.sourcePlannedExerciseId)) ||
+          (exerciseId !== null && candidate.exerciseId === exerciseId) ||
+          normalizeName(candidate.nameSnapshot) === normalizedExerciseName;
+      });
       if (!exercise) {
         continue;
       }

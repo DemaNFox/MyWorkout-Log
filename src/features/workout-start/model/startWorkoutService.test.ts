@@ -110,4 +110,56 @@ describe('StartWorkoutService', () => {
       actualReps: 6,
     });
   });
+
+  it('matches a built-in exercise by stable id when its names differ between days', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    const plans = new PlanRepository(db);
+    const days = new TrainingDayRepository(db);
+    const workouts = new WorkoutRepository(db);
+    const plan = await plans.create('Strength');
+    await plans.activate(plan.id);
+    const firstDay = await days.createDay(plan.id, 'Day A');
+    const secondDay = await days.createDay(plan.id, 'Day B');
+    await days.addExercise({ trainingDayId: firstDay.id, name: 'Back Squat', exerciseId: 'back-squat', targetSets: 1, targetReps: 5, targetWeight: 60 });
+    await days.addExercise({ trainingDayId: secondDay.id, name: 'Приседания со штангой', exerciseId: 'back-squat', targetSets: 1, targetReps: 8, targetWeight: 50 });
+
+    const first = await new StartWorkoutService(db).startFromActivePlan(firstDay.id);
+    const firstSet = (await workouts.getDetails(first.id))!.exercises[0]!.sets[0]!;
+    await workouts.completeSet(firstSet.id, 72.5, 6);
+    await workouts.finishSession(first.id, 'completed');
+
+    const second = await new StartWorkoutService(db).startFromActivePlan(secondDay.id);
+    expect((await workouts.getDetails(second.id))?.exercises[0]?.sets[0]).toMatchObject({
+      targetWeight: 50,
+      targetReps: 8,
+      actualWeight: 72.5,
+      actualReps: 6,
+    });
+  });
+
+  it('does not reuse results from a different stable exercise id with the same name', async () => {
+    const db = new MemoryDatabase();
+    await runMigrations(db);
+    const plans = new PlanRepository(db);
+    const days = new TrainingDayRepository(db);
+    const workouts = new WorkoutRepository(db);
+    const plan = await plans.create('Strength');
+    await plans.activate(plan.id);
+    const firstDay = await days.createDay(plan.id, 'Day A');
+    const secondDay = await days.createDay(plan.id, 'Day B');
+    await days.addExercise({ trainingDayId: firstDay.id, name: 'Lift', exerciseId: 'back-squat', targetSets: 1, targetReps: 5, targetWeight: 60 });
+    await days.addExercise({ trainingDayId: secondDay.id, name: 'Lift', exerciseId: 'deadlift', targetSets: 1, targetReps: 8, targetWeight: 50 });
+
+    const first = await new StartWorkoutService(db).startFromActivePlan(firstDay.id);
+    const firstSet = (await workouts.getDetails(first.id))!.exercises[0]!.sets[0]!;
+    await workouts.completeSet(firstSet.id, 90, 3);
+    await workouts.finishSession(first.id, 'completed');
+
+    const second = await new StartWorkoutService(db).startFromActivePlan(secondDay.id);
+    expect((await workouts.getDetails(second.id))?.exercises[0]?.sets[0]).toMatchObject({
+      actualWeight: 50,
+      actualReps: 8,
+    });
+  });
 });
