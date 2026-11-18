@@ -1,402 +1,50 @@
 # Workout Logger
 
-The exercise metadata model and catalog maintenance rules are documented in
-[`docs/exercise-dictionary.md`](docs/exercise-dictionary.md).
+**Журнал тренировок для Android.** Составляйте программу, записывайте подходы во время занятия и следите за прогрессом. Данные хранятся на телефоне; для работы не нужен аккаунт или интернет.
 
-The current JSON program import format and Android import flow are documented in
-[`docs/program-import.md`](docs/program-import.md).
+[**Скачать APK — версия 1.7.1**](https://github.com/DemaNFox/MyWorkout-Log/releases/latest) · [Все релизы](https://github.com/DemaNFox/MyWorkout-Log/releases)
 
-Offline-first Android workout logger built with React Native, TypeScript, and SQLite.
+> APK устанавливается вручную на Android. При обновлении поверх предыдущей версии, подписанной тем же ключом, локальные данные сохраняются. На другой телефон история автоматически не переносится.
 
-The app is intentionally focused on three jobs:
+## Возможности
 
-- plan a workout program;
-- run and log a workout;
-- review history and exercise progress.
+- **Программы:** дни, упражнения и целевые подходы в одном месте.
+- **Тренировка:** крупный ввод веса и повторений, таймер отдыха и продолжение незавершённого занятия.
+- **Прошлые результаты:** последние значения упражнения подставляются в следующую тренировку; результаты из старой программы можно перенести по запросу.
+- **История и прогресс:** завершённые занятия и график по датам с показателем выбранной точки.
+- **Обмен данными:** импорт программ из JSON и экспорт программ, истории и комментариев.
 
-The bottom navigation has four sections: Today, Programs, History, and Progress. The exercise catalog and Settings are available from the icons on Today. During a workout, the current exercise stays expanded while other exercises can be opened on demand.
+## Как выглядит приложение
 
-It does not include accounts, backend sync, social features, nutrition tracking, AI coaching, videos, push notifications, or wearable integrations.
+Иллюстрации интерфейса с демонстрационными данными. Они показывают основные экраны, но отдельные детали могут отличаться от текущей сборки.
 
-## Stack
+| Сегодня | Программы | Тренировка |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/today.png" width="240" alt="Главный экран и активная программа"> | <img src="docs/screenshots/programs.png" width="240" alt="Дни программы"> | <img src="docs/screenshots/workout.png" width="240" alt="Запись подхода во время тренировки"> |
 
-- React Native + Expo Development Build
-- TypeScript strict mode
-- SQLite via `expo-sqlite`
-- Typed React Navigation
-- Jest + React Native Testing Library
-- Feature-Sliced Design adapted for React Native
+| История | Прогресс |
+|:---:|:---:|
+| <img src="docs/screenshots/history.png" width="240" alt="История завершённых тренировок"> | <img src="docs/screenshots/progress.png" width="240" alt="График прогресса по упражнению"> |
 
-```text
-src/app
-src/pages
-src/widgets
-src/features
-src/entities
-src/shared
-```
+[Все экраны одним изображением](docs/screenshots/contact-sheet.png)
 
-## Commands
+## Установка
+
+1. Откройте [последний релиз](https://github.com/DemaNFox/MyWorkout-Log/releases/latest).
+2. Скачайте `app-release.apk` из раздела **Assets**.
+3. Откройте файл на Android и разрешите установку из этого источника, если система попросит.
+
+Приложение работает офлайн и хранит тренировки в локальной SQLite базе. Облачной синхронизации нет. Экспорт `full-backup` пока нельзя восстановить через импорт; для переноса программ используйте [формат импорта программ](docs/program-import.md).
+
+## Для разработчиков
+
+React Native, Expo, TypeScript и SQLite. [Техническое руководство](docs/technical-guide.md) содержит модель данных, команды сборки и проверки. [Справочник упражнений](docs/exercise-dictionary.md) описывает каталог и его идентификаторы.
 
 ```bash
 npm install
-npm run start
-npm run android
 npm run lint
 npm run typecheck
 npm run test
 ```
 
-## Data Model
-
-SQLite is the source of truth. UI screens do not use SQL directly; database access goes through repositories and feature services.
-
-The app stores:
-
-- plans, training days, and planned exercises;
-- workout sessions, workout exercises, and workout sets;
-- repetition-based and timed exercises;
-- completed set values: weight, reps, duration, timestamps;
-- rest timer values per set: target seconds, start/end time, logged duration;
-- global exercise comments with a dated change log, shared across programs and workouts;
-- app settings, including theme and timer alert preferences.
-
-## Workout Flow
-
-- Select a specific training day before starting a workout.
-- Resume an active workout at the first unfinished exercise.
-- Edit planned exercises, including their metric type and targets.
-- Timed sets use an exercise timer independent from the rest timer.
-- Completing a set carries its edited values into the next pending set.
-- A new workout prefills editable set values from the latest completed matching exercise in the active program, including another day of that program. Stable exercise IDs take precedence over names; planned targets remain unchanged.
-- On the first opening of Today with matching results in another program, a one-time prompt offers to save those older sets as a starting baseline for the active program. Accepting affects newly started workouts only; completed results in the active program always take precedence. Declining is remembered. Existing workouts and history are not rewritten.
-- Canceling an active workout deletes the unfinished session after confirmation.
-
-History and analytics are not separate storage layers. They are views/calculations over the same local SQLite records:
-
-- History lists finished workout sessions for the active plan.
-- Analytics calculates exercise progress from completed sets for the active plan.
-- Progress defaults to a repetition-based exercise and lets you switch between weight and repetition charts. The chart uses real workout dates on its horizontal axis; tapping a point shows that workout's date and value. Timed exercises remain selectable, but duration analytics is not yet implemented.
-- Deleting a workout from history removes it from SQLite, so analytics is recalculated without it.
-
-During a workout, the information button in an exercise card opens its cross-program progress,
-including the best and lowest working results with dates and the recent progress chart. Exercise
-comments are keyed by stable `exerciseId`; the history button beside the comment field shows every
-saved change and its date.
-
-## Workout History
-
-Open `History` to review finished workouts for the currently active plan.
-
-Available actions:
-
-- `Details` opens the workout log.
-- `Delete` removes that workout session, its exercises, and its sets from SQLite.
-- `Clear history` removes all finished workouts for the active plan without deleting the plan itself.
-
-Open/current workouts are not cleared by `Clear history`.
-
-## Import And Export
-
-Open `Settings` for all import/export actions.
-
-### Export Programs
-
-Use `Settings -> Export programs`.
-
-Flow:
-
-1. Tap `Export programs`.
-2. Select one or more programs with checkboxes.
-3. Confirm export.
-4. Android opens the share sheet so you can save or send the JSON file.
-
-The exported file uses one JSON envelope. It can contain one program or many programs:
-
-```json
-{
-  "schemaVersion": 2,
-  "type": "workout-programs",
-  "exportedAt": "2026-06-20T12:00:00.000Z",
-  "payload": {
-    "exerciseDictionary": [],
-    "programs": [
-      {
-        "name": "Beginner Strength",
-        "days": [
-          {
-            "name": "Day A",
-            "order": 1,
-            "exercises": [
-              {
-                "name": "Squat",
-                "exerciseId": "back-squat",
-                "metricType": "reps",
-                "measurementType": "weight_reps",
-                "weightMode": "total",
-                "targetSets": 3,
-                "targetReps": 5,
-                "targetWeight": 60,
-                "note": "Warm up before working sets",
-                "order": 1
-              },
-              {
-                "name": "Bench press",
-                "exerciseId": "barbell-bench-press",
-                "metricType": "reps",
-                "measurementType": "weight_reps",
-                "weightMode": "total",
-                "targetSets": 3,
-                "targetReps": 5,
-                "targetWeight": 50,
-                "note": null,
-                "order": 2
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-### Import Programs
-
-Use `Settings -> Import JSON`.
-
-Flow:
-
-1. Tap `Import JSON`.
-2. Pick a `.json` file from Android file picker.
-3. The app validates `schemaVersion`, `type`, and payload structure.
-4. Imported programs are added to the local database.
-
-The recommended import format is the same `workout-programs` envelope used by export. A file can contain one program or several programs.
-
-Save the following as a UTF-8 `.json` file and select it in `Settings -> Import JSON`. This example uses the built-in `back-squat` exercise, so it does not need dictionary metadata:
-
-```json
-{
-  "schemaVersion": 2,
-  "type": "workout-programs",
-  "exportedAt": "2026-11-10T12:00:00.000Z",
-  "payload": {
-    "exerciseDictionary": [],
-    "programs": [
-      {
-        "name": "My strength program",
-        "days": [
-          {
-            "name": "Day A",
-            "order": 1,
-            "exercises": [
-              {
-                "name": "Back Squat",
-                "exerciseId": "back-squat",
-                "metricType": "reps",
-                "measurementType": "weight_reps",
-                "weightMode": "total",
-                "targetSets": 3,
-                "targetReps": 5,
-                "targetWeight": 60,
-                "note": null,
-                "order": 1
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-For a custom exercise or an unknown `exerciseId`, add its full metadata to `payload.exerciseDictionary`; see the [custom exercise example and allowed values](docs/program-import.md). Import adds new programs and does not restore completed workouts. Importing the same file twice creates duplicate programs.
-
-`Import JSON` also accepts legacy `workout-plan` files and `exercise-comments` exports. `program-history` exports are for analysis and cannot be imported. `full-backup` export is not currently restorable, so do not use it to move data to another device.
-
-Rules:
-
-- `schemaVersion` may be `1` for legacy files; new files should use `2`.
-- `type` should be `"workout-programs"` for one or many programs.
-- Program, day, and exercise names must be non-empty.
-- `targetSets` must be greater than `0`.
-- `targetReps`, `targetWeight`, `order` must be non-negative numbers.
-- `note` can be a string or `null`.
-- `exerciseDictionary` carries referenced catalog metadata. Custom entries use `isCustom: true`
-  and are restored before programs are created.
-
-Legacy single-program imports with `type: "workout-plan"` are still accepted, but `workout-programs` is the preferred format.
-
-### Export History And Analytics
-
-Use `Settings -> Export history`.
-
-Flow:
-
-1. Tap `Export history`.
-2. Select one or more programs.
-3. Confirm export.
-4. Android opens the share sheet for the generated JSON file.
-
-This export is for external analysis. It includes workout sessions, exercises, sets, rest timer values, and calculated exercise progress.
-
-Example shape:
-
-```json
-{
-  "schemaVersion": 2,
-  "type": "program-history",
-  "exportedAt": "2026-06-20T12:00:00.000Z",
-  "payload": {
-    "programs": [
-      {
-        "plan": {
-          "id": "plan-id",
-          "name": "Beginner Strength",
-          "status": "active"
-        },
-        "sessions": [
-          {
-            "id": "session-id",
-            "date": "2026-06-20T10:00:00.000Z",
-            "finishedAt": "2026-06-20T10:45:00.000Z",
-            "status": "completed",
-            "trainingDayName": "Day A",
-            "durationSec": 2700,
-            "exercises": [
-              {
-                "id": "exercise-id",
-                "name": "Squat",
-                "order": 1,
-                "sets": [
-                  {
-                    "index": 1,
-                    "targetWeight": 60,
-                    "targetReps": 5,
-                    "actualWeight": 62.5,
-                    "actualReps": 5,
-                    "completed": true,
-                    "completedAt": "2026-06-20T10:10:00.000Z",
-                    "restStartedAt": "2026-06-20T10:10:00.000Z",
-                    "restFinishedAt": "2026-06-20T10:11:30.000Z",
-                    "restDurationSec": 90,
-                    "restTargetSec": 90
-                  }
-                ]
-              }
-            ]
-          }
-        ],
-        "exerciseProgress": [
-          {
-            "exerciseName": "Squat",
-            "bestResult": {
-              "weight": 62.5,
-              "reps": 5,
-              "date": "2026-06-20T10:00:00.000Z"
-            },
-            "history": [
-              {
-                "workoutSessionId": "session-id",
-                "workoutExerciseId": "exercise-id",
-                "date": "2026-06-20T10:00:00.000Z",
-                "bestWeight": 62.5,
-                "repsAtBestWeight": 5,
-                "completedSets": 3,
-                "trend": "up"
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-### Full Backup
-
-Use `Settings -> Create backup`.
-
-Backup JSON is intended for full local data export. It includes settings, the combined built-in
-and custom exercise dictionary, the global exercise comment log, body metrics, plans, training
-days, planned exercises, workout sessions, workout exercises, and workout sets.
-
-### Exercise Comment Export
-
-Use `Settings -> Export exercise comments JSON` to create a standalone `exercise-comments`
-envelope. Each entry contains its own ID, stable `exerciseId`, text, and creation date. The export
-also includes the referenced exercise dictionary records, so comments for custom exercises can be
-imported on another device. Import is idempotent: entries with IDs already present are skipped.
-
-## Rest Timer
-
-Rest is logged per set.
-
-- Completing a set starts the bottom rest timer.
-- The `Rest` row below the completed set shows the logged/resting value.
-- When the timer finishes, the app shows an alert modal and can play/vibrate according to Settings.
-- Logged rest duration can be edited with the pencil button in the rest row.
-
-Timer alert settings are available in `Settings`:
-
-- silent;
-- vibration;
-- sound;
-- sound + vibration;
-- system alarm sound picker;
-- in-app volume slider.
-
-## Android Build
-
-To regenerate the launcher icon, adaptive icon, and native Android splash assets after editing the icon source, install Pillow and run `python scripts/generate_icons.py` from the repository root.
-
-Debug/dev builds require Metro because they load JavaScript from the local development server.
-
-Release APK builds package JavaScript into the APK and do not require Metro:
-
-```bash
-npx expo prebuild --platform android
-android/gradlew :app:assembleRelease -PnewArchEnabled=false
-```
-
-On Windows:
-
-```powershell
-cd android
-.\gradlew.bat assembleRelease -PnewArchEnabled=false
-```
-
-The generated APK is written to:
-
-```text
-android/app/build/outputs/apk/release/app-release.apk
-```
-
-Install over Wi-Fi ADB:
-
-```bash
-adb install -r android/app/build/outputs/apk/release/app-release.apk
-adb shell monkey -p com.workoutlogger.mvp -c android.intent.category.LAUNCHER 1
-```
-
-By default this local release APK is signed with the debug keystore from the React Native/Expo template. A production keystore is required for store distribution.
-
-## Verification
-
-Before shipping changes, run:
-
-```bash
-npm run lint
-npm run typecheck
-npm run test
-```
-
-For Android release verification:
-
-```bash
-cd android
-.\gradlew.bat assembleRelease -PnewArchEnabled=false
-```
+Иллюстрации для README можно пересоздать командой `python scripts/generate_readme_previews.py` после установки Pillow.
